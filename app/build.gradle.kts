@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.majung"
+    namespace = "com.maji"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.majung"
+        applicationId = "com.maji"
         minSdk = 28
         targetSdk = 34
         versionCode = 1
