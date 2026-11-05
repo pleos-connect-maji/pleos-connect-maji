@@ -1,6 +1,6 @@
-package com.majung.contract
+package com.maji.contract
 
-// 마중 팀 함수 약속. 첫날 정한 뒤로는 이름과 모양을 바꾸지 않아요.
+// 맞이 팀 함수 약속. 첫날 정한 뒤로는 이름과 모양을 바꾸지 않아요.
 // 바꿔야 하면 단톡에 먼저 알리고 이 파일을 같이 고쳐요.
 // 값 범위는 Pleos 에뮬레이터에서 확인한 기준이에요.
 
@@ -25,7 +25,7 @@ data class Profile(
     val greetingAudio: String,        // 인사 음성 파일 경로
     val specialGreetingAudio: String? = null, // 오늘만의 인사, 한 번 쓰면 null로 돌려놓기
     val songUri: String? = null,      // 탑승 시 한 번 재생할 노래
-    val place: String? = null         // 최근 마중 장소 (내비 목적지)
+    val place: String? = null         // 최근 맞이 장소 (내비 목적지)
 )
 
 /** 바꾸기 전 조수석 상태. B가 읽어서 C가 보관하고 하차 때 B가 되돌려요 */
@@ -82,10 +82,10 @@ interface VehicleControl {
     fun restore(state: PassengerState, onDone: () -> Unit = {})
 }
 
-// ───────────── C. 마중 흐름 ─────────────
+// ───────────── C. 맞이 흐름 ─────────────
 
-enum class MajungStep {
-    IDLE,        // 마중 전
+enum class MajiStep {
+    IDLE,        // 맞이 전
     HEADING,     // 탑승자 고르고 이동 중
     PREPARING,   // P단 정차, 자리 준비 중/완료
     BOARDED,     // 조수석 문 열림 → 인사
@@ -93,12 +93,12 @@ enum class MajungStep {
     FINISHED     // 최종 하차 버튼 → 복구
 }
 
-interface MajungFlow {
-    val step: MajungStep
+interface MajiFlow {
+    val step: MajiStep
     val profile: Profile?
-    fun addListener(onStep: (MajungStep) -> Unit)
-    fun start(profile: Profile)  // 마중 시작 화면에서 탑승자 버튼
-    fun cancel()                 // 마중 취소 → 원래대로
+    fun addListener(onStep: (MajiStep) -> Unit)
+    fun start(profile: Profile)  // 맞이 시작 화면에서 탑승자 버튼
+    fun cancel()                 // 맞이 취소 → 원래대로
     fun finish()                 // 최종 하차 버튼
 }
 
