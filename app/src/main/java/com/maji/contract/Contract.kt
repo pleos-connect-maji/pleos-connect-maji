@@ -22,8 +22,9 @@ data class Profile(
     val closeWindow: Boolean = true,  // 귀갓길에 창문 닫기
     val lightColor: Int? = null,      // 귀갓길 무드등 색 (ARGB), null = 기본값
     val lightBrightness: Int = 30,    // 0..100
-    val greetingAudio: String,        // 인사 음성 파일 경로
+    val greetingText: String,                 // 평소 인사 문장 (TTS로 읽음)
     val specialGreetingAudio: String? = null, // 오늘만의 인사, 한 번 쓰면 null로 돌려놓기
+    val greetingAudio: String? = null,        // TTS 실패 시 재생할 음성 파일, null이면 E의 기본 파일
     val songUri: String? = null,      // 탑승 시 한 번 재생할 노래
     val place: String? = null         // 최근 맞이 장소 (내비 목적지)
 )
@@ -120,7 +121,7 @@ interface ProfileRepository {
 // ───────────── E. 음성 ─────────────
 
 interface Greeter {
-    /** 인사 재생. specialGreetingAudio가 있으면 그걸 먼저 써요 */
+    /** 인사 재생. specialGreetingText가 있으면 그걸 먼저 TTS로 읽고, TTS가 실패하면 greetingAudio(없으면 기본 파일)를 틀어요 */
     fun playGreeting(profile: Profile, onDone: () -> Unit = {})
 
     /** 인사 끝나고 한 번만 재생 */
