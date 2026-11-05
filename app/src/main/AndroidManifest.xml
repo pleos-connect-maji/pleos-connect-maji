@@ -5,6 +5,27 @@
         android:name="android.hardware.type.automotive"
         android:required="true" />
 
+    <!-- B 차량 제어: 시트·열선·온도·창문·무드등 (읽기 + 제어) -->
+    <uses-permission android:name="pleos.car.permission.CAR_SEATS" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_SEATS" />
+    <uses-permission android:name="pleos.car.permission.CAR_CLIMATE" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_CLIMATE" />
+    <uses-permission android:name="pleos.car.permission.CAR_WINDOWS" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_WINDOWS" />
+    <uses-permission android:name="pleos.car.permission.CAR_LIGHTS" />
+    <uses-permission android:name="pleos.car.permission.CONTROL_CAR_LIGHTS" />
+
+    <!-- A 차량 신호: 문 열림, 주행 제한, 기어(P단)·주차 브레이크 -->
+    <uses-permission android:name="pleos.car.permission.CAR_DOORS" />
+    <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <uses-permission android:name="pleos.car.permission.CAR_POWERTRAIN" />
+
+    <!-- C 내비 목적지 (시간 남으면) -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
+
+    <!-- E 음성 안내: Pleos TextToSpeech -->
+    <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
+
     <application
         android:allowBackup="false"
         android:label="@string/app_name"
