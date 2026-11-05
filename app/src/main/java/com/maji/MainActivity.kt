@@ -1,4 +1,4 @@
-package com.majung
+package com.maji
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = "마중 빈 프로젝트 실행 성공", style = MaterialTheme.typography.headlineLarge)
+                        Text(text = "맞이 빈 프로젝트 실행 성공", style = MaterialTheme.typography.headlineLarge)
                     }
                 }
             }
