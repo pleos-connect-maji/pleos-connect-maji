@@ -6,24 +6,30 @@ package com.maji.contract
 
 // ───────────── 공통 데이터 (D가 저장, 모두가 씀) ─────────────
 
+/** 계절. 기본은 날짜로(4~10월 SUMMER, 11~3월 WINTER), 설정 화면에서 바꿀 수 있어요 */
+enum class Season { SUMMER, WINTER }
+
 /** 조수석 공조 값 한 묶음 */
 data class Climate(
-    val seatHeat: Int,      // -3..3 (음수 = 통풍, 0 = 끔, 양수 = 열선 단계)
-    val temperature: Float  // 15.0..30.0 ℃, 조수석만
+    val seatHeat: Int? = null,      // -3..3 (음수 = 통풍, 0 = 끔, 양수 = 열선 단계)
+    val temperature: Float? = null  // 15.0..30.0 ℃, 조수석만
 )
 
-/** 탑승자 프로필 */
+/** 탑승자 프로필. 첫 탑승 때 탑승자가 만들어요 */
 data class Profile(
     val id: Long = 0,
     val name: String,                 // "엄마"
-    val winter: Climate,              // 계절 프리셋: 겨울(11~3월)
-    val summer: Climate,              // 계절 프리셋: 여름(4~10월)
-    val seatMoveMs: Int,              // 시트 이동 시간 (+ 앞으로, - 뒤로, 0 = 안 움직임)
+    val winter: Climate? = null,      // null = 겨울 설정을 아직 안 함 -> 겨울에 타면 설정 화면
+    // 계절 프리셋: 겨울(11~3월)
+    val summer: Climate? = null,              // null = 여름 설정을 아직 안 함 -> 여름에 타면 설정 화면
+    // 계절 프리셋: 여름(4~10월)
+    val seatMoveMs: Int = 0,          // 계절과 상관없이 하나. 앱 ◀ ▶로 맞춘 시간 (+앞, -뒤, 0 = 안 움직임)
+    // 시트 이동 시간 (+ 앞으로, - 뒤로, 0 = 안 움직임)
     val closeWindow: Boolean = true,  // 귀갓길에 창문 닫기
     val lightColor: Int? = null,      // 귀갓길 무드등 색 (ARGB), null = 기본값
     val lightBrightness: Int = 30,    // 0..100
-    val greetingText: String,                 // 평소 인사 문장 (TTS로 읽음)
-    val specialGreetingAudio: String? = null, // 오늘만의 인사, 한 번 쓰면 null로 돌려놓기
+    val greetingText: String? = null, // 운전자가 고르거나 직접 입력한 인사 (TTS로 읽음), null이면 기본 인사 목록의 첫 번째
+    val specialGreetingText: String? = null, // 오늘만의 인사, 한 번 쓰면 null로 돌려놓기
     val greetingAudio: String? = null,        // TTS 실패 시 재생할 음성 파일, null이면 E의 기본 파일
     val songUri: String? = null,      // 탑승 시 한 번 재생할 노래
     val place: String? = null         // 최근 맞이 장소 (내비 목적지)
@@ -108,20 +114,23 @@ interface MajiFlow {
 interface ProfileRepository {
     suspend fun getAll(): List<Profile>
     suspend fun get(id: Long): Profile?
-    suspend fun save(profile: Profile): Long
+    suspend fun save(profile: Profile): Long // 첫 설정, 계절 설정도 이걸로 저장
     suspend fun delete(id: Long)
 
-    /** 오늘 날짜 기준으로 winter/summer 중 하나 */
-    fun climateFor(profile: Profile, month: Int): Climate
+    /** 날짜 기준 기본 계절 (설정 화면에 처음 띄울 값) */
+    fun seasonFor(month: Int): Season
 
-    /** 탑승자가 직접 바꾼 마지막 값을 해당 계절 프리셋에 반영 */
-    suspend fun learn(profileId: Long, month: Int, changed: Climate)
+    /** 그 계절 값. null이면 아직 설정 안 한 계절 → 설정 화면을 띄워야 해요 */
+    fun climateFor(profile: Profile, season: Season): Climate?
+
+    /** 타고 가며 바뀐 칸만 그 계절에 반영 (null 칸은 그대로 둠) */
+    suspend fun learn(profileId: Long, season: Season, changed: Climate)
 }
 
 // ───────────── E. 음성 ─────────────
 
 interface Greeter {
-    /** 인사 재생. specialGreetingText가 있으면 그걸 먼저 TTS로 읽고, TTS가 실패하면 greetingAudio(없으면 기본 파일)를 틀어요 */
+    /** 인사 재생. specialGreetingText → greetingText → 기본 인사 목록 첫 번째 순서로 TTS로 읽고, TTS가 실패하면 greetingAudio(없으면 기본 파일)를 틀어요 */
     fun playGreeting(profile: Profile, onDone: () -> Unit = {})
 
     /** 인사 끝나고 한 번만 재생 */
