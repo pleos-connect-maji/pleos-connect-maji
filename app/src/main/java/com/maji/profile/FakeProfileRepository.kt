@@ -49,11 +49,9 @@ class FakeProfileRepository(
     /** changed에서 null이 아닌 칸만 그 계절에 반영. 다른 계절은 건드리지 않아요 */
     override suspend fun learn(profileId: Long, season: Season, changed: Climate) {
         synchronized(lock) {
-            val profile = profiles[profileId] ?: return          // 없는 프로필이면 무시
-            val current = ProfileRules.climateFor(profile, season)
-            val merged = ProfileRules.merge(current, changed) ?: return  // 바뀐 칸 없음
-            if (merged == current) return                        // 기존 값과 같으면 저장 안 함
-            insertOrReplace(ProfileRules.withClimate(profile, season, merged))
+            val profile = profiles[profileId] ?: return                         // 없는 프로필이면 무시
+            val updated = ProfileRules.learned(profile, season, changed) ?: return // 바뀐 게 없으면 저장 안 함
+            insertOrReplace(updated)
         }
     }
 
