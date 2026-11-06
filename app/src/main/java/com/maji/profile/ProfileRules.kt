@@ -73,4 +73,16 @@ object ProfileRules {
             temperature = checked.temperature ?: base.temperature
         )
     }
+
+    /**
+     * 학습한 결과 프로필. 그 계절 칸만 바뀌어요.
+     * 바꿀 게 없거나 기존 값과 같으면 null → 저장할 필요 없음
+     * (Fake, Room 저장소가 같이 써요)
+     */
+    fun learned(profile: Profile, season: Season, changed: Climate): Profile? {
+        val current = climateFor(profile, season)
+        val merged = merge(current, changed) ?: return null
+        if (merged == current) return null
+        return withClimate(profile, season, merged)
+    }
 }
