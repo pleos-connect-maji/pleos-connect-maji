@@ -28,6 +28,7 @@ class MajiFlowImpl(
     private var isBrakeOn = false
     private var lastTemperature: Float? = null  // 에뮬레이터에서 못 읽는 원래 온도 대신 쓸 값 (A가 알려줌)
     private var savedState: PassengerState? = null  // 바꾸기 전 조수석 상태, 하차 때 되돌려요
+    private var isDrivingRestricted = false  // 주행 중이면 시작·취소·하차 명령을 무시해요
 
     override val step: MajiStep get() = current
     override val profile: Profile? get() = currentProfile
@@ -38,6 +39,7 @@ class MajiFlowImpl(
 
     // 맞이 시작 화면에서 탑승자 버튼
     override fun start(profile: Profile) {
+        if (isDrivingRestricted) return  // 주행 중에는 시작하지 않아요
         if (current != MajiStep.IDLE && current != MajiStep.FINISHED) return  // 맞이 중이면 무시
         currentProfile = profile
         isPark = false
@@ -47,12 +49,22 @@ class MajiFlowImpl(
     }
 
     // 맞이 취소 → 원래대로
-    override fun cancel() = endAndRestore()
+    override fun cancel() {
+        if (isDrivingRestricted) return  // 주행 중에는 취소하지 않아요
+        endAndRestore()
+    }
 
     // 최종 하차 버튼
-    override fun finish() = endAndRestore()
+    override fun finish() {
+        if (isDrivingRestricted) return  // 주행 중에는 끝내지 않아요
+        endAndRestore()
+    }
 
     // ───────────── A 신호 받기 ─────────────
+
+    override fun onDrivingRestrictionChanged(isRestricted: Boolean) {
+        isDrivingRestricted = isRestricted
+    }
 
     override fun onParkChanged(isPark: Boolean) {
         this.isPark = isPark

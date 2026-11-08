@@ -148,6 +148,42 @@ class MajiFlowTest {
         assertEquals(500, control.preparedSeatMoveMs)
     }
 
+    // ───────────── 주행 중 가드 ─────────────
+
+    @Test
+    fun `주행 중에는 시작 명령을 무시해요`() {
+        flow.onDrivingRestrictionChanged(true)
+        flow.start(mom)
+        assertEquals(MajiStep.IDLE, flow.step)
+        assertEquals(null, flow.profile)
+    }
+
+    @Test
+    fun `주행 중에는 취소와 최종 하차를 무시하고 정차 후에는 동작해요`() {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onDrivingRestrictionChanged(true)
+
+        flow.cancel()
+        flow.finish()
+        assertEquals(MajiStep.PREPARING, flow.step)
+        assertEquals(null, control.restored)
+
+        flow.onDrivingRestrictionChanged(false)
+        flow.finish()
+        assertEquals(MajiStep.FINISHED, flow.step)
+    }
+
+    @Test
+    fun `주행 중에도 A 신호는 그대로 받아서 단계가 바뀌어요`() {
+        flow.start(mom)
+        flow.onDrivingRestrictionChanged(true)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        assertEquals(MajiStep.PREPARING, flow.step)
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
