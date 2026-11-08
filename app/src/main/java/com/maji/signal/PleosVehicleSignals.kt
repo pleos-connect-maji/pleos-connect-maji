@@ -22,9 +22,9 @@ import com.maji.contract.VehicleSignals
  * A. 차량 신호 (Pleos Vehicle SDK 2.3.2)
  *
  * 되는 것: P단 onParkChanged (#28), 조수석 문 onPassengerDoorChanged (#29),
- *         조수석 열선 onPassengerHeatChanged · 온도 onPassengerTemperatureChanged (#31)
+ *         조수석 열선 onPassengerHeatChanged · 온도 onPassengerTemperatureChanged (#31),
+ *         주행 중 제한 onDrivingRestrictionChanged (#30, P단이 아니면 제한)
  * 주차 브레이크: Pleos SDK에 없어서 팀 논의 후 제외
- * 주행 제한: 다음 이슈에서 추가 (#30)
  */
 @Suppress("DEPRECATION") // Pleos Gear API는 '지원 중단 예정'이지만 2.3.2에서는 동작해요
 class PleosVehicleSignals(context: Context) : VehicleSignals {
@@ -203,6 +203,8 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
     }
 
     // 기어 값 → P단인지 아닌지로 바꿔서, 바뀌었을 때만 알려주기
+    // 주행 중 제한(#30)도 같이 알려줘요: P단이 아니면 제한
+    // (Pleos SDK에 주행 제한 API가 없어서, 시스템 규칙 "P면 제한 없음, 그 외 제한"과 같게 맞췄어요)
     private fun updatePark(gear: VehicleGear?) {
         if (gear == null || gear == VehicleGear.GEAR_UNKNOWN) return
         val isPark = gear == VehicleGear.GEAR_PARK
@@ -210,8 +212,9 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
             gearRetryCount = 0
             if (isPark == lastIsPark) return@post
             lastIsPark = isPark
-            Log.d(TAG, "→ onParkChanged($isPark)")
+            Log.d(TAG, "→ onParkChanged($isPark), onDrivingRestrictionChanged(${!isPark})")
             listener?.onParkChanged(isPark)
+            listener?.onDrivingRestrictionChanged(!isPark)
         }
     }
 
