@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">맞이</string>
+
+    <!-- 기본 인사 목록 (D #39). 운전자가 안 고르면 첫 번째가 나와요 (E가 TTS로 읽음) -->
+    <string-array name="greeting_presets">
+        <item>오늘도 고생 많았어요</item>
+        <item>어서 와요, 자리 맞춰 뒀어요</item>
+        <item>기다렸어요! 편하게 앉아요</item>
+        <item>오늘 하루 어땠어요?</item>
+    </string-array>
 </resources>
