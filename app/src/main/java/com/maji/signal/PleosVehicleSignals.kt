@@ -3,6 +3,9 @@ package com.maji.signal
 import ai.pleos.playground.vehicle.Vehicle
 import ai.pleos.playground.vehicle.api.model.area.DoorArea
 import ai.pleos.playground.vehicle.api.model.area.SeatArea
+import ai.pleos.playground.vehicle.api.model.capability.AccessType
+import ai.pleos.playground.vehicle.api.model.capability.AreaBounds
+import ai.pleos.playground.vehicle.api.model.capability.CapabilityConfig
 import ai.pleos.playground.vehicle.constant.area.DoorValue
 import ai.pleos.playground.vehicle.constant.area.SeatValue
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
@@ -23,7 +26,8 @@ import com.maji.contract.VehicleSignals
  *
  * 되는 것: P단 onParkChanged (#28), 조수석 문 onPassengerDoorChanged (#29),
  *         조수석 열선 onPassengerHeatChanged · 온도 onPassengerTemperatureChanged (#31),
- *         주행 중 제한 onDrivingRestrictionChanged (#30, P단이 아니면 제한)
+ *         주행 중 제한 onDrivingRestrictionChanged (#30, P단이 아니면 제한),
+ *         되는 기능 capabilities() (#32, start 때 미리 확인해서 기억)
  * 주차 브레이크: Pleos SDK에 없어서 팀 논의 후 제외
  */
 @Suppress("DEPRECATION") // Pleos Gear API는 '지원 중단 예정'이지만 2.3.2에서는 동작해요
@@ -44,10 +48,19 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
     private var rawSeatHeat: Int? = null
     private var rawSeatVent: Int? = null
 
+    // 되는 기능 (#32). null = 아직 확인 전
+    private var capSeatMove: Boolean? = null
+    private var capSeatHeat: Boolean? = null
+    private var capTemperature: Boolean? = null
+    private var capWindow: Boolean? = null
+    private var capLight: Boolean? = null
+
     // 재시도 횟수
     private var gearRetryCount = 0
     private var doorRetryCount = 0
     private var climateRetryCount = 0
+    private var capRetryCount = 0
+    private var capRetryScheduled = false
 
     // 조수석 = 1열 오른쪽
     private val passengerDoor = DoorArea(DoorValue.ROW_1_RIGHT)
@@ -136,6 +149,7 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
         subscribeGear()
         subscribeDoor()
         subscribeClimate()
+        checkCapabilities()
     }
 
     override fun stop() {
@@ -156,20 +170,25 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
         gearRetryCount = 0
         doorRetryCount = 0
         climateRetryCount = 0
+        capRetryCount = 0
+        capRetryScheduled = false
+        // 되는 기능(cap...)은 차가 바뀌지 않으니 그대로 기억해요
     }
 
+    // 되는 기능 (#32)
+    // start() 때 미리 차에 물어보고 기억해둔 값을 돌려줘요.
+    // 아직 확인 전이면 true(된다)로 봐요 → B가 일단 시도하고, 실패하면 대체 모드로 가요.
     override fun capabilities(): Capabilities {
-        // TODO(#32): 실제 차량 값으로 채우기. 지금은 전부 된다고 가정해요
         return Capabilities(
-            seatMove = true,
-            seatHeat = true,
-            temperature = true,
-            window = true,
-            light = true
+            seatMove = capSeatMove ?: true,
+            seatHeat = capSeatHeat ?: true,
+            temperature = capTemperature ?: true,
+            window = capWindow ?: true,
+            light = capLight ?: true
         )
     }
 
-    // ───────── 기어 (#28) ─────────
+    // ───────── 기어 (#28) + 주행 제한 (#30) ─────────
 
     private fun subscribeGear() {
         try {
@@ -324,6 +343,109 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
             Log.d(TAG, "→ onPassengerTemperatureChanged($celsius)")
             listener?.onPassengerTemperatureChanged(celsius)
         }
+    }
+
+    // ───────── 되는 기능 확인 (#32) ─────────
+    // B가 제어할 때 쓰는 기능과 같은 걸로 확인해요.
+    //   시트 이동  = Seat.moveSeatForeAft                  → checkMoveSeatForeAftCapabilities
+    //   열선       = Seat.setHvacSeatTemperature            → checkSeatTemperatureCapabilities
+    //   온도       = HVAC.setHvacTemperature                → checkHvacTemperatureCapabilities
+    //   창문       = Window.setWindowPosition               → checkWindowPositionCapabilities
+    //   무드등     = Light.setAmbientLightBrightnessColor   → checkAmbientLightBrightnessColorCapabilities
+    // "된다" = 지원 영역이 하나라도 있고 + 제어(WRITE 또는 READ_WRITE)할 수 있음
+    // 영역·범위·접근 권한은 로그로 남겨요 (#32 표, D #4 범위 보정용)
+
+    private fun checkCapabilities() {
+        try {
+            val seat = vehicle.getSeat()
+
+            if (capSeatMove == null) {
+                seat.checkMoveSeatForeAftCapabilities(
+                    onComplete = { config, areas ->
+                        Log.d(TAG, "[기능] 시트 이동: 권한=${config.accessType}, 영역=$areas")
+                        mainHandler.post { capSeatMove = canControl(config) && areas.isNotEmpty() }
+                    },
+                    onFailed = { e -> capFailed("시트 이동", e) }
+                )
+            }
+
+            if (capSeatHeat == null) {
+                seat.checkSeatTemperatureCapabilities(
+                    onComplete = { config, bounds ->
+                        Log.d(TAG, "[기능] 열선: 권한=${config.accessType}, 영역·범위=${describe(bounds)}")
+                        mainHandler.post { capSeatHeat = canControl(config) && bounds.isNotEmpty() }
+                    },
+                    onFailed = { e -> capFailed("열선", e) }
+                )
+            }
+
+            if (capTemperature == null) {
+                vehicle.getHVAC().checkHvacTemperatureCapabilities(
+                    onComplete = { config, bounds, _ ->
+                        Log.d(TAG, "[기능] 온도: 권한=${config.accessType}, 영역·범위=${describe(bounds)}")
+                        mainHandler.post { capTemperature = canControl(config) && bounds.isNotEmpty() }
+                    },
+                    onFailed = { e -> capFailed("온도", e) }
+                )
+            }
+
+            if (capWindow == null) {
+                vehicle.getWindow().checkWindowPositionCapabilities(
+                    onComplete = { config, bounds ->
+                        Log.d(TAG, "[기능] 창문: 권한=${config.accessType}, 영역·범위=${describe(bounds)}")
+                        mainHandler.post { capWindow = canControl(config) && bounds.isNotEmpty() }
+                    },
+                    onFailed = { e -> capFailed("창문", e) }
+                )
+            }
+
+            if (capLight == null) {
+                vehicle.getLight().checkAmbientLightBrightnessColorCapabilities(
+                    onComplete = { config, areas ->
+                        Log.d(TAG, "[기능] 무드등 색: 권한=${config.accessType}, 영역=$areas")
+                        mainHandler.post { capLight = canControl(config) && areas.isNotEmpty() }
+                    },
+                    onFailed = { e -> capFailed("무드등", e) }
+                )
+            }
+        } catch (e: Exception) {
+            capFailed("전체", e)
+        }
+    }
+
+    // 제어(바꾸기)가 되는 권한인지
+    private fun canControl(config: CapabilityConfig): Boolean =
+        config.accessType == AccessType.WRITE || config.accessType == AccessType.READ_WRITE
+
+    // 영역별 최소~최대를 보기 좋게 글자로
+    private fun describe(bounds: Map<*, AreaBounds<*>>): String =
+        bounds.entries.joinToString { (area, b) -> "$area=${b.minValue}..${b.maxValue}" }
+
+    private fun capFailed(name: String, e: Exception) {
+        Log.w(TAG, "[기능] $name 확인 실패: ${e.message}")
+        mainHandler.post { retryCapabilities() }
+    }
+
+    // 연결 전이라 실패했을 수 있어서 다시 물어봐요. 끝까지 실패한 것만 "안 됨"으로 둬요.
+    private fun retryCapabilities() {
+        if (listener == null || capRetryScheduled) return
+        if (capRetryCount >= MAX_RETRY) {
+            if (capSeatMove == null) capSeatMove = false
+            if (capSeatHeat == null) capSeatHeat = false
+            if (capTemperature == null) capTemperature = false
+            if (capWindow == null) capWindow = false
+            if (capLight == null) capLight = false
+            Log.w(TAG, "[기능] 확인 포기 → ${capabilities()}")
+            return
+        }
+        capRetryCount++
+        capRetryScheduled = true
+        mainHandler.postDelayed({
+            capRetryScheduled = false
+            if (listener == null) return@postDelayed
+            Log.d(TAG, "[기능] 다시 확인 ($capRetryCount/$MAX_RETRY)")
+            checkCapabilities()
+        }, RETRY_DELAY_MS)
     }
 
     companion object {
