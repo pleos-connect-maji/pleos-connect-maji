@@ -25,7 +25,6 @@ class MajiFlowImpl(
     private val listeners = mutableListOf<(MajiStep) -> Unit>()
 
     private var isPark = false
-    private var isBrakeOn = false
     private var lastTemperature: Float? = null  // 에뮬레이터에서 못 읽는 원래 온도 대신 쓸 값 (A가 알려줌)
     private var savedState: PassengerState? = null  // 바꾸기 전 조수석 상태, 하차 때 되돌려요
 
@@ -41,7 +40,6 @@ class MajiFlowImpl(
         if (current != MajiStep.IDLE && current != MajiStep.FINISHED) return  // 맞이 중이면 무시
         currentProfile = profile
         isPark = false
-        isBrakeOn = false
         savedState = null
         moveTo(MajiStep.HEADING)
     }
@@ -63,11 +61,6 @@ class MajiFlowImpl(
         checkReadyToPrepare()
     }
 
-    override fun onParkingBrakeChanged(isOn: Boolean) {
-        isBrakeOn = isOn
-        checkReadyToPrepare()
-    }
-
     override fun onPassengerDoorChanged(isOpen: Boolean) {
         if (!isOpen || current != MajiStep.PREPARING) return  // 중간 하차는 #25에서 다뤄요
         val p = currentProfile ?: return
@@ -82,9 +75,9 @@ class MajiFlowImpl(
 
     // ───────────── 내부 ─────────────
 
-    // P단 + 주차 브레이크가 둘 다 켜지면 자리 준비 시작
+    // P단에 들어가면 자리 준비 시작. 주차 브레이크 신호는 A가 보내지 않아서 쓰지 않아요.
     private fun checkReadyToPrepare() {
-        if (current != MajiStep.HEADING || !isPark || !isBrakeOn) return
+        if (current != MajiStep.HEADING || !isPark) return
         val p = currentProfile ?: return
         moveTo(MajiStep.PREPARING)
 
