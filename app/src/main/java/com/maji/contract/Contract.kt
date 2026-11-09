@@ -82,6 +82,24 @@ interface VehicleControl {
     /** 문이 열리면 C가 바로 부름 */
     fun stopSeat()
 
+    // ── 자리 설정 화면(#46)용: 누르는 동안 시트 이동, 버튼 즉시 반영 ──
+    // 기본 동작을 넣어 둬서 가짜 B(개발 화면·테스트)는 고치지 않아도 돼요.
+
+    /** ◀ ▶ 누를 때. 떼는 신호를 놓쳐도 최대 시간이 지나면 B가 알아서 멈춰요 */
+    fun startSeatMove(forward: Boolean) {}
+
+    /** 뗄 때. 이번에 움직인 시간(ms, +앞 -뒤)을 돌려줘요 → 합계를 seatMoveMs로 저장 */
+    fun stopSeatMove(): Int {
+        stopSeat()
+        return 0
+    }
+
+    /** 열선 버튼 즉시 반영. -3..3 (음수 = 통풍) */
+    fun setSeatHeat(level: Int) {}
+
+    /** 온도 버튼 즉시 반영. 15.0..30.0 ℃ */
+    fun setTemperature(celsius: Float) {}
+
     /** 귀갓길: 창문·무드등 */
     fun applyRideHome(profile: Profile)
 
