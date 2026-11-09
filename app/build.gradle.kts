@@ -45,6 +45,7 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.pleos.vehicle)
+    implementation(libs.pleos.tts)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
     implementation(libs.androidx.room.runtime)

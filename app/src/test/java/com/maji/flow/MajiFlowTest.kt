@@ -70,9 +70,17 @@ class MajiFlowTest {
     // ───────────── 조건 ─────────────
 
     @Test
-    fun `P단만 들어가고 브레이크가 안 걸리면 준비하지 않아요`() {
+    fun `P단에 들어가면 주차 브레이크 신호 없이도 자리 준비를 시작해요`() {
         flow.start(mom)
         flow.onParkChanged(true)
+        assertEquals(MajiStep.PREPARING, flow.step)
+        assertEquals(Climate(seatHeat = 2, temperature = 23f), control.preparedClimate)
+    }
+
+    @Test
+    fun `P단이 아직 아니면 준비하지 않아요`() {
+        flow.start(mom)
+        flow.onParkingBrakeChanged(true)
         assertEquals(MajiStep.HEADING, flow.step)
         assertEquals(null, control.preparedClimate)
     }
@@ -148,12 +156,61 @@ class MajiFlowTest {
         assertEquals(500, control.preparedSeatMoveMs)
     }
 
+    // ───────────── 중간 하차와 최종 하차 (#25) ─────────────
+
+    @Test
+    fun `귀갓길 중 문 열림·닫힘은 중간 하차로 보고 단계와 복구를 그대로 둬요`() {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        val stepsBefore = steps.size
+
+        flow.onPassengerDoorChanged(true)
+        flow.onPassengerDoorChanged(false)
+
+        assertEquals(MajiStep.RIDING_HOME, flow.step)
+        assertEquals(stepsBefore, steps.size)  // 단계가 바뀌지 않았어요
+        assertEquals(null, control.restored)   // 복구는 하지 않았어요
+        assertEquals(1, control.stopSeatCount) // 정지는 처음 탑승 때 한 번뿐이에요
+        assertEquals(listOf("greeting:엄마", "song:엄마"), greeter.played)
+    }
+
+    @Test
+    fun `최종 하차 버튼을 누르면 FINISHED가 되고 원래 상태로 복구해요`() {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        flow.onPassengerDoorChanged(true)
+        flow.onPassengerDoorChanged(false)
+
+        flow.finish()
+
+        assertEquals(MajiStep.FINISHED, flow.step)
+        assertEquals(control.original, control.restored)
+    }
+
+    // ───────────── 안내음 (E) ─────────────
+
+    @Test
+    fun `자리 준비를 시작할 때와 끝났을 때 안내음을 각각 불러요`() {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+
+        assertEquals(listOf("audio/prepare_notice.mp3", "audio/prepare_done.mp3"), greeter.notices)
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
         var preparedClimate: Climate? = null
         var preparedSeatMoveMs: Int? = null
         var stopSeatCalled = false
+        var stopSeatCount = 0
         val rideHomeFor = mutableListOf<String>()
         var restored: PassengerState? = null
 
@@ -166,6 +223,7 @@ class MajiFlowTest {
         }
         override fun stopSeat() {
             stopSeatCalled = true
+            stopSeatCount++
         }
         override fun applyRideHome(profile: Profile) {
             rideHomeFor.add(profile.name)
@@ -186,7 +244,10 @@ class MajiFlowTest {
         override fun playSong(profile: Profile) {
             played.add("song:${profile.name}")
         }
-        override fun playNotice(audio: String) {}
+        val notices = mutableListOf<String>()
+        override fun playNotice(audio: String) {
+            notices.add(audio)
+        }
         override fun stopAll() {
             stopped = true
         }
