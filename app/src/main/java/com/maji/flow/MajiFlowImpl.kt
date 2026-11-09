@@ -10,6 +10,8 @@ import com.maji.contract.ProfileRepository
 import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
 import com.maji.voice.Notices
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 // C. 맞이 흐름 (#22). 차 신호(A)를 받아 단계를 넘기고, 단계마다 B·D·E 함수를 불러요.
@@ -18,6 +20,7 @@ class MajiFlowImpl(
     private val control: VehicleControl,
     private val profiles: ProfileRepository,
     private val greeter: Greeter,
+    private val scope: CoroutineScope,  // 저장(suspend)을 부르는 곳
     private val month: () -> Int = { LocalDate.now().monthValue }
 ) : MajiFlow, VehicleSignals.Listener {
 
@@ -28,6 +31,10 @@ class MajiFlowImpl(
     private var isPark = false
     private var lastTemperature: Float? = null  // 에뮬레이터에서 못 읽는 원래 온도 대신 쓸 값 (A가 알려줌)
     private var savedState: PassengerState? = null  // 바꾸기 전 조수석 상태, 하차 때 되돌려요
+
+    private var preparedClimate: Climate? = null  // 자리 준비 때 맞춘 값. 이 값과 다르게 바뀐 칸만 학습해요
+    private var changedHeat: Int? = null
+    private var changedTemperature: Float? = null
 
     override val step: MajiStep get() = current
     override val profile: Profile? get() = currentProfile
@@ -42,14 +49,17 @@ class MajiFlowImpl(
         currentProfile = profile
         isPark = false
         savedState = null
+        preparedClimate = null
+        changedHeat = null
+        changedTemperature = null
         moveTo(MajiStep.HEADING)
     }
 
-    // 맞이 취소 → 원래대로
-    override fun cancel() = endAndRestore()
+    // 맞이 취소 → 원래대로 (학습은 하지 않아요)
+    override fun cancel() = endAndRestore(learn = false)
 
-    // 최종 하차 버튼
-    override fun finish() = endAndRestore()
+    // 최종 하차 버튼 → 바꾼 값을 학습하고 원래대로
+    override fun finish() = endAndRestore(learn = true)
 
     // ───────────── A 신호 받기 ─────────────
 
@@ -67,14 +77,29 @@ class MajiFlowImpl(
         val p = currentProfile ?: return
         moveTo(MajiStep.BOARDED)
         control.stopSeat()
-        greeter.playGreeting(p) { greeter.playSong(p) }
+        greeter.playGreeting(p) {
+            greeter.playSong(p)
+            clearSpecialGreeting(p)
+        }
+    }
+
+    override fun onPassengerHeatChanged(level: Int) {
+        // 준비 중에 우리가 맞춘 값은 탑승자가 바꾼 게 아니고, 맞춘 값이 없으면 기준이 없어서 기록하지 않아요
+        val prepared = preparedClimate?.seatHeat ?: return
+        if (isPassengerSeated()) changedHeat = if (level != prepared) level else null  // 준비 값으로 되돌리면 기록을 지워요
     }
 
     override fun onPassengerTemperatureChanged(celsius: Float) {
         lastTemperature = celsius
+        val prepared = preparedClimate?.temperature ?: return
+        if (isPassengerSeated()) changedTemperature = if (celsius != prepared) celsius else null
     }
 
     // ───────────── 내부 ─────────────
+
+    // 탑승 뒤(BOARDED, RIDING_HOME)에만 탑승자가 바꾼 값으로 봐요
+    private fun isPassengerSeated(): Boolean =
+        current == MajiStep.BOARDED || current == MajiStep.RIDING_HOME
 
     // P단에 들어가면 자리 준비 시작. 주차 브레이크 신호는 A가 보내지 않아서 쓰지 않아요.
     private fun checkReadyToPrepare() {
@@ -87,6 +112,7 @@ class MajiFlowImpl(
             savedState = state.copy(temperature = state.temperature ?: lastTemperature)
             // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
             val climate = profiles.climateFor(p, profiles.seasonFor(month())) ?: Climate()
+            preparedClimate = climate
             greeter.playNotice(Notices.PREPARE)
             control.preparePassenger(climate, p.seatMoveMs) {
                 // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
@@ -95,13 +121,33 @@ class MajiFlowImpl(
         }
     }
 
-    // 맞이 끝: 원래 상태로 되돌리고 안내음 정리
-    private fun endAndRestore() {
+    // 맞이 끝: 필요하면 바꾼 값을 학습하고, 원래 상태로 되돌리고, 안내음 정리
+    private fun endAndRestore(learn: Boolean) {
         if (current == MajiStep.IDLE || current == MajiStep.FINISHED) return
+        if (learn) learnChanges()
         savedState?.let { control.restore(it) }
         savedState = null
         greeter.stopAll()
         moveTo(MajiStep.FINISHED)
+    }
+
+    // 탑승자가 직접 바꾼 칸만 그 계절에 저장해요. 바뀐 칸이 없으면 저장하지 않아요.
+    private fun learnChanges() {
+        val p = currentProfile ?: return
+        val heat = changedHeat
+        val temperature = changedTemperature
+        if (heat == null && temperature == null) return
+        val season = profiles.seasonFor(month())
+        val changed = Climate(seatHeat = heat, temperature = temperature)
+        scope.launch { profiles.learn(p.id, season, changed) }
+    }
+
+    // 오늘만의 인사는 한 번 읽고 나면 비워요 (#38)
+    private fun clearSpecialGreeting(p: Profile) {
+        if (p.specialGreetingText == null) return
+        scope.launch {
+            profiles.get(p.id)?.let { profiles.save(it.copy(specialGreetingText = null)) }
+        }
     }
 
     private fun moveTo(next: MajiStep) {

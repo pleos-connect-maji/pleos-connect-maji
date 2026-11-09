@@ -20,6 +20,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,7 +70,8 @@ private fun MajiApp() {
     val repo = remember { RoomProfileRepository.create(context) }
     val control = remember { PleosVehicleControl(context) }
     val greeter = remember { PleosGreeter.create(context) }
-    val flow = remember { MajiFlowImpl(control, repo, greeter) }
+    val scope = rememberCoroutineScope()  // 흐름이 저장을 백그라운드에서 해요 (오늘만의 인사 비우기)
+    val flow = remember { MajiFlowImpl(control, repo, greeter, scope) }
     val signals = remember { PleosVehicleSignals(context) }
 
     var drivingRestricted by remember { mutableStateOf(false) }

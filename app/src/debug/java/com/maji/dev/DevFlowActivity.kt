@@ -3,6 +3,7 @@ package com.maji.dev
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,11 +52,13 @@ class DevFlowActivity : ComponentActivity() {
 @Composable
 fun DevFlowScreen() {
     val log = remember { DevLog() }
+    val scope = rememberCoroutineScope()
     val flow = remember {
         MajiFlowImpl(
             control = DevVehicleControl(log),
             profiles = FakeProfileRepository(FakeProfileRepository.samples()),
-            greeter = DevGreeter(log)
+            greeter = DevGreeter(log),
+            scope = scope
         )
     }
     val profile = remember { FakeProfileRepository.samples().first() }
