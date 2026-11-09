@@ -22,7 +22,9 @@ data class FlowSnapshotEntity(
     val preparedSet: Boolean,
     val preparedSeatHeat: Int?,
     val preparedTemp: Float?,
-    val savedAtMillis: Long
+    val savedAtMillis: Long,
+    val learnedHeat: Int?,
+    val learnedTemp: Float?
 )
 
 fun FlowSnapshot.toEntity(): FlowSnapshotEntity = FlowSnapshotEntity(
@@ -36,7 +38,9 @@ fun FlowSnapshot.toEntity(): FlowSnapshotEntity = FlowSnapshotEntity(
     preparedSet = preparedClimate != null,
     preparedSeatHeat = preparedClimate?.seatHeat,
     preparedTemp = preparedClimate?.temperature,
-    savedAtMillis = savedAtMillis
+    savedAtMillis = savedAtMillis,
+    learnedHeat = learnedHeat,
+    learnedTemp = learnedTemp
 )
 
 fun FlowSnapshotEntity.toSnapshot(): FlowSnapshot = FlowSnapshot(
@@ -45,5 +49,7 @@ fun FlowSnapshotEntity.toSnapshot(): FlowSnapshot = FlowSnapshot(
     season = Season.valueOf(season),
     savedState = if (savedSet) PassengerState(savedSeatHeat, savedTemp, savedWindow) else null,
     preparedClimate = if (preparedSet) Climate(preparedSeatHeat, preparedTemp) else null,
-    savedAtMillis = savedAtMillis
+    savedAtMillis = savedAtMillis,
+    learnedHeat = learnedHeat,
+    learnedTemp = learnedTemp
 )
