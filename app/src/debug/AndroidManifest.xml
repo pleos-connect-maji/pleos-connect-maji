@@ -5,5 +5,13 @@
         <activity
             android:name="com.maji.dev.DevFlowActivity"
             android:exported="true" />
+        <!-- B 차량 제어 확인 화면 -->
+        <activity
+            android:name="com.maji.dev.DevControlActivity"
+            android:exported="true" />
+        <!-- E 음성 확인 화면 -->
+        <activity
+            android:name="com.maji.dev.DevVoiceActivity"
+            android:exported="true" />
     </application>
 </manifest>
