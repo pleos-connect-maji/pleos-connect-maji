@@ -185,6 +185,17 @@ class MajiFlowTest {
         assertEquals(control.original, control.restored)
     }
 
+    // ───────────── 안내음 (E) ─────────────
+
+    @Test
+    fun `자리 준비를 시작할 때와 끝났을 때 안내음을 각각 불러요`() {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+
+        assertEquals(listOf("audio/prepare_notice.mp3", "audio/prepare_done.mp3"), greeter.notices)
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
@@ -225,7 +236,10 @@ class MajiFlowTest {
         override fun playSong(profile: Profile) {
             played.add("song:${profile.name}")
         }
-        override fun playNotice(audio: String) {}
+        val notices = mutableListOf<String>()
+        override fun playNotice(audio: String) {
+            notices.add(audio)
+        }
         override fun stopAll() {
             stopped = true
         }
