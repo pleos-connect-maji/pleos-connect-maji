@@ -26,6 +26,9 @@ interface AudioPlayer {
 
     /** 멈춘 뒤에는 콜백을 부르지 않아요 */
     fun stop()
+
+    /** 볼륨 0.0..1.0 (재생 중일 때만 의미 있어요) */
+    fun setVolume(volume: Float) {}
 }
 
 // 시간 제한용. 테스트에서는 시간을 직접 넘겨요.

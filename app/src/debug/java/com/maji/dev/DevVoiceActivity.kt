@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.maji.contract.Profile
+import com.maji.voice.AndroidAudioFocus
 import com.maji.voice.GreetingRules
 import com.maji.voice.MainScheduler
 import com.maji.voice.MediaAudioPlayer
@@ -62,6 +63,7 @@ private fun DevVoiceScreen() {
             player = MediaAudioPlayer(context),
             songPlayer = MediaAudioPlayer(context),
             scheduler = MainScheduler(),
+            focus = AndroidAudioFocus(context),
             defaultGreetings = emptyList(),
             log = { log.add("(파일만) $it") }
         )
@@ -86,7 +88,7 @@ private fun DevVoiceScreen() {
 
     Row(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("E 음성 확인 (#15 인사, #18 안내음, #16 노래)", style = MaterialTheme.typography.titleLarge)
+            Text("E 음성 확인 (#15 인사, #18 안내음, #16 노래, #17 포커스)", style = MaterialTheme.typography.titleLarge)
             Button(onClick = { play("고른 인사", mom) }, modifier = Modifier.fillMaxWidth()) {
                 Text("1. 고른 인사 (greetingText)")
             }
@@ -132,6 +134,13 @@ private fun DevVoiceScreen() {
                 }
             }, modifier = Modifier.fillMaxWidth()) {
                 Text("10. 인사 끝나면 노래 한 번 (test_song.mp3, 10초)")
+            }
+            Button(onClick = {
+                log.add("▶ 노래 → 3초 뒤 안내음 (노래가 작아졌다가 돌아와야 정상)")
+                greeter.playSong(withSong)
+                MainScheduler().postDelayed(3_000) { greeter.playNotice(Notices.PREPARE) }
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("12. 노래 중 안내음 → 노래 작아졌다 돌아옴 (#17)")
             }
             Button(onClick = {
                 log.add("▶ 노래 없는 프로필")
