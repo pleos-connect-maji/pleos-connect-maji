@@ -72,4 +72,12 @@ class ProgressMessageTest {
             progressMessage(MajiStep.RIDING_HOME, "엄마", false, fallback = true)
         )
     }
+
+    @Test
+    fun `정차 중 준비 문구에는 맞추는 열선과 온도를 보여 줘요`() {
+        assertEquals(
+            "엄마 자리 맞추는 중…\n열선 2단계, 22℃",
+            progressMessage(MajiStep.PREPARING, "엄마", false, climate = Climate(seatHeat = 2, temperature = 22f))
+        )
+    }
 }
