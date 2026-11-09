@@ -101,8 +101,8 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             }
         }
         moveSeatFor(seatMoveMs, onStopped = partDone)
-        setSeatHeat(climate.seatHeat, onDone = partDone)
-        setTemperature(climate.temperature, onDone = partDone)
+        applyHeat(climate.seatHeat, onDone = partDone)
+        applyTemperature(climate.temperature, onDone = partDone)
     }
 
     // ───────── #11 시트 이동 · 안전 정지 ─────────
@@ -182,7 +182,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     // ───────── #10 열선 · 온도 ─────────
     // null = 건너뜀 (아직 설정 안 한 칸, 온도 "그대로 두기")
 
-    private fun setSeatHeat(level: Int?, onDone: () -> Unit) {
+    private fun applyHeat(level: Int?, onDone: () -> Unit) {
         if (level == null) {
             main.post(onDone)
             return
@@ -200,7 +200,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         }
     }
 
-    private fun setTemperature(celsius: Float?, onDone: () -> Unit) {
+    private fun applyTemperature(celsius: Float?, onDone: () -> Unit) {
         if (celsius == null) {
             main.post(onDone)
             return
@@ -216,6 +216,31 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             Log.w(TAG, "[#10] 온도 호출 실패: ${e.message}")
             main.post(onDone)
         }
+    }
+
+    // ───────── 자리 설정 화면(#46)용 ─────────
+    // ◀ ▶ 누르는 동안만 시트 이동. 움직인 시간은 자동 준비와 같은 seatOffsetMs에 쌓여서
+    // 복구(#14) 때 자동 준비 + 직접 조절한 만큼이 함께 되돌아가요.
+
+    override fun startSeatMove(forward: Boolean) {
+        Log.d(TAG, "[#46] 시트 ${if (forward) "앞으로" else "뒤로"} 누름")
+        if (!startSeat(forward)) return
+        // 떼는 신호를 놓쳐도(화면 꺼짐 등) 최대 시간이 지나면 알아서 멈춰요
+        main.postDelayed(stopRunnable, MAX_SEAT_MOVE_MS.toLong())
+    }
+
+    override fun stopSeatMove(): Int {
+        val moved = stopSeatAndMeasure()
+        Log.d(TAG, "[#46] 시트 뗌 → ${moved}ms")
+        return moved
+    }
+
+    override fun setSeatHeat(level: Int) {
+        applyHeat(level) {}
+    }
+
+    override fun setTemperature(celsius: Float) {
+        applyTemperature(celsius) {}
     }
 
     override fun applyRideHome(profile: Profile) {} // #12에서 구현
