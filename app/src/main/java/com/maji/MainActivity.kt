@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.maji.contract.MajiStep
+import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
 import com.maji.control.PleosVehicleControl
 import com.maji.flow.MajiFlowImpl
@@ -33,6 +34,7 @@ import com.maji.profile.RoomProfileRepository
 import com.maji.signal.PleosVehicleSignals
 import com.maji.ui.ProfileEditRoute
 import com.maji.ui.ProfileListRoute
+import com.maji.ui.ProgressRoute
 import com.maji.ui.StartRoute
 import com.maji.voice.PleosGreeter
 
@@ -93,6 +95,7 @@ private fun MajiApp() {
         AppScreen.Home -> HomeScreen(
             repo = repo,
             flow = flow,
+            control = control,
             step = step,
             drivingRestricted = drivingRestricted,
             onManageProfiles = { screen = AppScreen.ProfileList }
@@ -123,6 +126,7 @@ private fun MajiApp() {
 private fun HomeScreen(
     repo: RoomProfileRepository,
     flow: MajiFlowImpl,
+    control: VehicleControl,
     step: MajiStep,
     drivingRestricted: Boolean,
     onManageProfiles: () -> Unit
@@ -130,20 +134,25 @@ private fun HomeScreen(
     val active = step != MajiStep.IDLE && step != MajiStep.FINISHED
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // 임시 상태 줄. 진행 화면(#56)이 머지되면 이 자리를 진행 화면으로 바꿔요.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.End
         ) {
-            Text(text = "지금 단계: $step", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            if (active) {
-                Button(onClick = { flow.finish() }, enabled = !drivingRestricted) { Text("최종 하차") }
-                OutlinedButton(onClick = { flow.cancel() }, enabled = !drivingRestricted) { Text("맞이 취소") }
-            }
             OutlinedButton(onClick = onManageProfiles, enabled = !drivingRestricted) { Text("탑승자 관리") }
+        }
+
+        // 맞이가 시작되면 진행 화면(#56)을 위에 보여 줘요. 제어가 막힌 차면 대체 모드 문구를 써요.
+        if (active) {
+            Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+                ProgressRoute(
+                    flow = flow,
+                    profiles = repo,
+                    drivingRestricted = drivingRestricted,
+                    controlAvailable = control.isControlAvailable()
+                )
+            }
         }
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
