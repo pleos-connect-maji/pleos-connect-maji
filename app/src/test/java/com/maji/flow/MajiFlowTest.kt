@@ -282,6 +282,38 @@ class MajiFlowTest {
         assertEquals(Climate(seatHeat = 2, temperature = 23f), repo.get(1)!!.winter)
     }
 
+    // ───────────── 내비 목적지 (#27) ─────────────
+
+    private class FakeDestinations : DestinationSetter {
+        val requested = mutableListOf<String>()
+        var cancelled = 0
+        override fun requestDestination(place: String) {
+            requested.add(place)
+        }
+        override fun cancelDestination() {
+            cancelled++
+        }
+    }
+
+    @Test
+    fun `맞이를 시작하면 프로필의 장소를 목적지로 정하고 끝나면 취소해요`() {
+        val nav = FakeDestinations()
+        val navFlow = MajiFlowImpl(control, repo, greeter, scope, destinations = nav, month = { 12 })
+        navFlow.start(mom.copy(place = "○○역"))
+        assertEquals(listOf("○○역"), nav.requested)
+
+        navFlow.finish()
+        assertEquals(1, nav.cancelled)
+    }
+
+    @Test
+    fun `장소가 없으면 목적지를 정하지 않아요`() {
+        val nav = FakeDestinations()
+        val navFlow = MajiFlowImpl(control, repo, greeter, scope, destinations = nav, month = { 12 })
+        navFlow.start(mom)
+        assertEquals(emptyList<String>(), nav.requested)
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
