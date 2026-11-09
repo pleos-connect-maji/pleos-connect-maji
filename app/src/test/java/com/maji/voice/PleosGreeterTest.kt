@@ -10,10 +10,12 @@ class PleosGreeterTest {
 
     private val speaker = FakeSpeaker()
     private val player = FakePlayer()
+    private val song = FakePlayer()
     private val clock = FakeScheduler()
     private val greeter = PleosGreeter(
         speaker = speaker,
         player = player,
+        songPlayer = song,
         scheduler = clock,
         defaultGreetings = listOf("오늘도 고생 많았어요"),
         startTimeoutMs = 3_000,
@@ -117,7 +119,7 @@ class PleosGreeterTest {
 
     @Test
     fun 읽을_문장이_없으면_바로_파일() {
-        val silent = PleosGreeter(speaker, player, clock, defaultGreetings = emptyList())
+        val silent = PleosGreeter(speaker, player, song, clock, defaultGreetings = emptyList())
         silent.playGreeting(Profile(name = "아빠"), onDone)
         assertEquals(null, speaker.lastText)
         assertEquals(listOf(GreetingRules.DEFAULT_GREETING_AUDIO), player.played)
@@ -219,6 +221,76 @@ class PleosGreeterTest {
         speaker.error("UNKNOWN")
         greeter.stopAll()
         assertTrue(player.stopCount > 0)
+        greeter.playGreeting(mom, onDone)
+        speaker.start()
+        speaker.done()
+        assertEquals(1, doneCount)
+    }
+
+    // ───────────── #16 노래 ─────────────
+
+    private val withSong = mom.copy(songUri = "content://media/song/1")
+
+    @Test
+    fun songUri가_없거나_비면_건너뜀() {
+        greeter.playSong(mom)
+        greeter.playSong(mom.copy(songUri = "  "))
+        assertTrue(song.played.isEmpty())
+    }
+
+    @Test
+    fun 노래는_음악_플레이어로_한_번_재생() {
+        greeter.playSong(withSong)
+        assertEquals(listOf("content://media/song/1"), song.played)
+        assertTrue(player.played.isEmpty()) // 인사·안내음 플레이어는 안 씀
+        song.complete()
+        assertEquals(1, song.played.size) // 끝나도 다시 틀지 않음
+    }
+
+    @Test
+    fun 인사가_끝나고_노래_흐름() {
+        // C가 하는 그대로: 인사 onDone에서 노래
+        greeter.playGreeting(withSong) { greeter.playSong(withSong) }
+        speaker.start()
+        speaker.done()
+        assertEquals(listOf("content://media/song/1"), song.played)
+    }
+
+    @Test
+    fun 노래_중에_또_부르면_새_노래로() {
+        greeter.playSong(withSong)
+        greeter.playSong(withSong.copy(songUri = "audio/b.mp3"))
+        assertEquals(listOf("content://media/song/1", "audio/b.mp3"), song.played)
+    }
+
+    @Test
+    fun 노래_중에_인사가_오면_노래는_멈춤() {
+        greeter.playSong(withSong)
+        val before = song.stopCount
+        greeter.playGreeting(mom, onDone)
+        assertTrue(song.stopCount > before)
+    }
+
+    @Test
+    fun 노래_중_안내음은_노래를_멈추지_않음() {
+        greeter.playSong(withSong)
+        val before = song.stopCount
+        greeter.playNotice(Notices.PREPARE)
+        assertEquals(before, song.stopCount)
+    }
+
+    @Test
+    fun stopAll하면_노래도_멈춤() {
+        greeter.playSong(withSong)
+        val before = song.stopCount
+        greeter.stopAll()
+        assertTrue(song.stopCount > before)
+    }
+
+    @Test
+    fun 노래가_실패해도_예외_없이_인사는_정상() {
+        greeter.playSong(withSong)
+        song.fail()
         greeter.playGreeting(mom, onDone)
         speaker.start()
         speaker.done()
