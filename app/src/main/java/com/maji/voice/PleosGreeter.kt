@@ -1,6 +1,7 @@
 package com.maji.voice
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -25,13 +26,20 @@ import com.maji.contract.Profile
  *   목록에 없으면 파일만 틀어요.
  * - 인사 중에 불리면 건너뛰어요 (인사를 끊지 않아요). 안내음 중에 불리면 새 안내음으로 바꿔요.
  *
- * stopAll(): 전부 멈추고 onDone은 부르지 않아요. (맞이 취소 때 노래가 나오거나 오늘만의 인사가 지워지지 않게)
+ * playSong (#16)
+ * - songUri를 한 번만 재생해요 (반복 없음). null이거나 비어 있으면 건너뛰어요.
+ * - 인사·안내음과 다른 플레이어(음악용)로 틀어요. 노래 중에 또 불리면 새 노래로 바꿔요.
+ * - 새 인사가 시작되면 노래는 멈춰요. 안내음은 노래와 같이 나와요 (소리 낮추기는 #17).
+ * - 실패해도 로그만 남겨요.
  *
- * playSong(#16), 오디오 포커스(#17)는 아직 비어 있어요.
+ * stopAll(): 노래까지 전부 멈추고 onDone은 부르지 않아요. (맞이 취소 때 노래가 나오거나 오늘만의 인사가 지워지지 않게)
+ *
+ * 오디오 포커스(#17)는 아직 없어요.
  */
 class PleosGreeter(
     private val speaker: Speaker,
     private val player: AudioPlayer,
+    private val songPlayer: AudioPlayer,
     private val scheduler: Scheduler,
     private val defaultGreetings: List<String>,
     private val log: (String) -> Unit = {},
@@ -44,9 +52,11 @@ class PleosGreeter(
     // 재생할 때마다 1씩 올려요. 콜백이 왔을 때 번호가 다르면 이미 멈춘(지난) 재생이라 무시해요.
     private var session = 0
     private var playing: Kind? = null
+    private var songSession = 0
     private var cancelTimer: (() -> Unit)? = null
 
     override fun playGreeting(profile: Profile, onDone: () -> Unit) {
+        stopSong()
         speakOrPlay(
             kind = Kind.GREETING,
             text = GreetingRules.textFor(profile, defaultGreetings),
@@ -59,7 +69,18 @@ class PleosGreeter(
     }
 
     override fun playSong(profile: Profile) {
-        log("playSong(${profile.name}) - #16에서 구현 예정")
+        val uri = profile.songUri?.trim()
+        if (uri.isNullOrEmpty()) {
+            log("노래 없음 (songUri 비어 있음) → 건너뜀")
+            return
+        }
+        val id = ++songSession
+        log("노래 재생: $uri")
+        songPlayer.play(
+            uri,
+            onDone = { if (id == songSession) log("노래 끝: $uri") },
+            onError = { reason -> if (id == songSession) log("노래 재생 실패: $uri ($reason)") }
+        )
     }
 
     override fun playNotice(audio: String) {
@@ -84,6 +105,7 @@ class PleosGreeter(
     override fun stopAll() {
         log("stopAll")
         startNewSession()
+        stopSong()
     }
 
     // TTS로 읽고, 안 되면 files를 앞에서부터 틀어요. 어떤 길로 가든 onFinish는 한 번 (stopAll·새 재생으로 끊기면 안 불림)
@@ -167,6 +189,11 @@ class PleosGreeter(
         speaker.release()
     }
 
+    private fun stopSong() {
+        songSession++
+        songPlayer.stop()
+    }
+
     // 지난 재생을 조용히 멈추고 새 번호를 받아요
     private fun startNewSession(): Int {
         session++
@@ -199,6 +226,12 @@ class PleosGreeter(
             return PleosGreeter(
                 speaker = PleosTtsSpeaker(app, log = log),
                 player = MediaAudioPlayer(app, log = log),
+                songPlayer = MediaAudioPlayer(
+                    app,
+                    usage = AudioAttributes.USAGE_MEDIA,
+                    contentType = AudioAttributes.CONTENT_TYPE_MUSIC,
+                    log = log
+                ),
                 scheduler = MainScheduler(),
                 defaultGreetings = app.resources.getStringArray(R.array.greeting_presets).toList(),
                 log = log

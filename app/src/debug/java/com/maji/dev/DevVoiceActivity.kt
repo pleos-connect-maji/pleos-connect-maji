@@ -60,6 +60,7 @@ private fun DevVoiceScreen() {
         PleosGreeter(
             speaker = AlwaysFailSpeaker,
             player = MediaAudioPlayer(context),
+            songPlayer = MediaAudioPlayer(context),
             scheduler = MainScheduler(),
             defaultGreetings = emptyList(),
             log = { log.add("(파일만) $it") }
@@ -75,6 +76,8 @@ private fun DevVoiceScreen() {
     val mom = remember { Profile(id = 1, name = "엄마", greetingText = "엄마, 오늘도 고생 많으셨어요") }
     val special = remember { mom.copy(specialGreetingText = "엄마, 생일 축하해요!") }
     val noText = remember { Profile(id = 2, name = "아빠") }
+    // 테스트 노래는 debug 빌드에만 있어요 (app/src/debug/assets/audio/test_song.mp3)
+    val withSong = remember { mom.copy(songUri = "audio/test_song.mp3") }
 
     fun play(label: String, p: Profile, g: PleosGreeter = greeter) {
         log.add("▶ $label")
@@ -83,7 +86,7 @@ private fun DevVoiceScreen() {
 
     Row(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("E 음성 확인 (#15 인사, #18 안내음)", style = MaterialTheme.typography.titleLarge)
+            Text("E 음성 확인 (#15 인사, #18 안내음, #16 노래)", style = MaterialTheme.typography.titleLarge)
             Button(onClick = { play("고른 인사", mom) }, modifier = Modifier.fillMaxWidth()) {
                 Text("1. 고른 인사 (greetingText)")
             }
@@ -120,6 +123,21 @@ private fun DevVoiceScreen() {
                 greeter.playNotice(Notices.PREPARE)
             }, modifier = Modifier.fillMaxWidth()) {
                 Text("9. 인사 중에 안내음 → 인사만 나와야 정상")
+            }
+            Button(onClick = {
+                log.add("▶ 인사 → 노래 (C가 하는 순서)")
+                greeter.playGreeting(withSong) {
+                    log.add("✅ onDone → playSong")
+                    greeter.playSong(withSong)
+                }
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("10. 인사 끝나면 노래 한 번 (test_song.mp3, 10초)")
+            }
+            Button(onClick = {
+                log.add("▶ 노래 없는 프로필")
+                greeter.playSong(mom)
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("11. songUri 없음 → 건너뛰어야 정상")
             }
             OutlinedButton(onClick = {
                 greeter.stopAll()
