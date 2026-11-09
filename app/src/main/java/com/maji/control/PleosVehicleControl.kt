@@ -53,10 +53,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     }
 
     override fun isControlAvailable(): Boolean {
-        if (allPrepareFailed) return false
-        val caps = listOf(capSeatMove, capSeatHeat, capTemperature)
-        if (caps.any { it == null }) return true // 아직 확인 중 → 일단 시도
-        return caps.any { it == true }
+        return ControlRules.isControlAvailable(listOf(capSeatMove, capSeatHeat, capTemperature), allPrepareFailed)
     }
 
     private fun checkControlCapabilities() {
@@ -177,16 +174,14 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
     // ───────── #11 시트 이동 · 안전 정지 ─────────
     // SDK에는 "어디로 가라"가 없어서 앞/뒤로 출발 → ms만큼 기다림 → STOP 으로 움직여요.
-    // 실제로 움직인 시간을 seatOffsetMs에 쌓아 두고, restore(#14)에서 그만큼 반대로 움직여요.
+    // 실제로 움직인 시간을 실제로 움직인 시간을 seatTracker에 쌓아 두고, restore(#14)에서 그만큼 반대로 움직여요.
 
-    private var moveStartedAt = 0L        // 출발 시각 (SystemClock 기준), 0 = 안 움직이는 중
-    private var moveForward = true
-    private var seatOffsetMs = 0          // 원래 자리에서 지금까지 움직인 합계 (+앞, -뒤)
+    private val seatTracker = SeatMoveTracker() // 실제로 움직인 시간 기록 (계산은 ControlRules.kt)
     private var afterSeatStop: (() -> Unit)? = null
     private val stopRunnable = Runnable { stopSeat() }
 
     private fun moveSeatFor(ms: Int, onStopped: () -> Unit) {
-        val target = ms.coerceIn(-MAX_SEAT_MOVE_MS, MAX_SEAT_MOVE_MS)
+        val target = ControlRules.clampSeatMove(ms)
         if (target == 0) {
             main.post(onStopped)
             return
@@ -201,7 +196,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
     /** 앞/뒤로 출발. 이미 움직이는 중이면 먼저 멈춰서 시간을 정산해요. */
     private fun startSeat(forward: Boolean): Boolean {
-        if (moveStartedAt != 0L) stopSeat()
+        if (seatTracker.isMoving) stopSeat()
         return try {
             vehicle.getSeat().moveSeatForeAft(
                 passengerSeat,
@@ -209,8 +204,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
                 { _, c -> main.post { commandSucceeded = true }; Log.d(TAG, "[#11] 시트 출발: $c") },
                 { e -> Log.w(TAG, "[#11] 시트 출발 실패: ${e.message}") }
             )
-            moveForward = forward
-            moveStartedAt = SystemClock.elapsedRealtime()
+            seatTracker.start(forward, SystemClock.elapsedRealtime())
             true
         } catch (e: Exception) {
             Log.w(TAG, "[#11] 시트 출발 호출 실패: ${e.message}")
@@ -237,14 +231,9 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             )
         }.onFailure { Log.w(TAG, "[#11] 시트 정지 호출 실패: ${it.message}") }
 
-        var moved = 0
-        if (moveStartedAt != 0L) {
-            val elapsed = (SystemClock.elapsedRealtime() - moveStartedAt).toInt()
-            moved = if (moveForward) elapsed else -elapsed
-            seatOffsetMs = (seatOffsetMs + moved).coerceIn(-MAX_SEAT_MOVE_MS, MAX_SEAT_MOVE_MS)
-            moveStartedAt = 0L
-            Log.d(TAG, "[#11] 이번에 움직인 시간 ${moved}ms, 원래 자리에서 ${seatOffsetMs}ms")
-        }
+        val wasMoving = seatTracker.isMoving
+        val moved = seatTracker.stop(SystemClock.elapsedRealtime())
+        if (wasMoving) Log.d(TAG, "[#11] 이번에 움직인 시간 ${moved}ms, 원래 자리에서 ${seatTracker.offsetMs}ms")
         afterSeatStop?.let { afterSeatStop = null; it() }
         return moved
     }
@@ -257,7 +246,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             main.post(onDone)
             return
         }
-        val v = level.coerceIn(MIN_HEAT, MAX_HEAT)
+        val v = ControlRules.clampHeat(level)
         try {
             vehicle.getSeat().setHvacSeatTemperature(
                 passengerSeat, v,
@@ -275,7 +264,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             main.post(onDone)
             return
         }
-        val v = celsius.coerceIn(MIN_TEMP, MAX_TEMP)
+        val v = ControlRules.clampTemperature(celsius)
         try {
             vehicle.getHVAC().setHvacTemperature(
                 passengerSeat, v, TemperatureUnit.CELSIUS,
@@ -289,14 +278,14 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     }
 
     // ───────── 자리 설정 화면(#46)용 ─────────
-    // ◀ ▶ 누르는 동안만 시트 이동. 움직인 시간은 자동 준비와 같은 seatOffsetMs에 쌓여서
+    // ◀ ▶ 누르는 동안만 시트 이동. 움직인 시간은 자동 준비와 같은 seatTracker에 쌓여서
     // 복구(#14) 때 자동 준비 + 직접 조절한 만큼이 함께 되돌아가요.
 
     override fun startSeatMove(forward: Boolean) {
         Log.d(TAG, "[#46] 시트 ${if (forward) "앞으로" else "뒤로"} 누름")
         if (!startSeat(forward)) return
         // 떼는 신호를 놓쳐도(화면 꺼짐 등) 최대 시간이 지나면 알아서 멈춰요
-        main.postDelayed(stopRunnable, MAX_SEAT_MOVE_MS.toLong())
+        main.postDelayed(stopRunnable, ControlRules.MAX_SEAT_MOVE_MS.toLong())
     }
 
     override fun stopSeatMove(): Int {
@@ -345,9 +334,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             light.checkAmbientLightBrightnessCapabilities(
                 { _, bounds ->
                     bounds.forEach { (area, b) ->
-                        val min = b.minValue
-                        val max = b.maxValue
-                        val value = min + (max - min) * brightness.coerceIn(0, 100) / 100
+                        val value = ControlRules.scaleBrightness(brightness, b.minValue, b.maxValue)
                         // 바꾸기 전 값을 먼저 읽고 나서 바꿔요
                         light.getAmbientLightBrightness(area, { oldB ->
                             light.getAmbientLightBrightnessColor(area, { oldC ->
@@ -372,22 +359,22 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
     // ───────── #14 원래 상태로 복구 ─────────
     // 최종 하차·취소 때 C가 #9에서 읽어 둔 상태를 넘겨줘요.
-    //   시트: 위치를 못 읽으니 "실제로 움직인 시간(seatOffsetMs)"만큼 반대로 움직여요
+    //   시트: 위치를 못 읽으니 "실제로 움직인 시간(seatTracker)"만큼 반대로 움직여요
     //   열선·온도·창문: 읽어 둔 값으로 (null이면 모르는 값이라 그대로 둬요)
     //   무드등: #12에서 기억해 둔 값으로
     // onDone은 시트·열선·온도·창문이 다 끝나면 한 번만 불러요.
     override fun restore(state: PassengerState, onDone: () -> Unit) {
-        Log.d(TAG, "[#14] 복구 시작: $state, 시트 되돌릴 시간=${-seatOffsetMs}ms")
-        if (moveStartedAt != 0L) stopSeat() // 움직이는 중이면 먼저 멈추고 정산
+        Log.d(TAG, "[#14] 복구 시작: $state, 시트 되돌릴 시간=${seatTracker.restorePlanMs()}ms")
+        if (seatTracker.isMoving) stopSeat() // 움직이는 중이면 먼저 멈추고 정산
         var waiting = 4
         val partDone = {
             waiting--
             if (waiting == 0) {
-                Log.d(TAG, "[#14] 복구 끝 (남은 시트 차이 ${seatOffsetMs}ms)")
+                Log.d(TAG, "[#14] 복구 끝 (남은 시트 차이 ${seatTracker.offsetMs}ms)")
                 onDone()
             }
         }
-        moveSeatFor(-seatOffsetMs, onStopped = partDone)
+        moveSeatFor(seatTracker.restorePlanMs(), onStopped = partDone)
         applyHeat(state.seatHeat, onDone = partDone)
         applyTemperature(state.temperature, onDone = partDone)
         val window = state.windowPosition
@@ -411,7 +398,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
     /** 앱이 꺼질 때. 움직이는 시트를 멈추고 SDK 연결을 풀어요 */
     fun release() {
-        if (moveStartedAt != 0L) stopSeat()
+        if (seatTracker.isMoving) stopSeat()
         main.removeCallbacksAndMessages(null)
         vehicle.release()
     }
@@ -420,12 +407,6 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         private const val TAG = "MajiControl"
         private const val READ_TIMEOUT_MS = 2000L
 
-        // 값 범위 (Pleos 에뮬레이터 기준, D의 검증 범위와 같게)
-        const val MAX_SEAT_MOVE_MS = 10_000 // 끝→끝 약 10초로 추정 (전동시트 약 25cm, 초당 2~2.5cm)
-        const val MIN_HEAT = -3
-        const val MAX_HEAT = 3
-        const val MIN_TEMP = 15f
-        const val MAX_TEMP = 30f
 
         // 프로필에 무드등 색이 없을 때 귀갓길 기본 색 (따뜻한 주황빛, ARGB)
         const val DEFAULT_LIGHT_COLOR = 0xFFFFB36B.toInt()
