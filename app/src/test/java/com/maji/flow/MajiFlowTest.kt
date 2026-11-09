@@ -213,12 +213,50 @@ class MajiFlowTest {
         assertEquals(null, specialRepo.get(1)!!.specialGreetingText)
     }
 
+    // ───────────── 중간 하차와 최종 하차 (#25) ─────────────
+
+    @Test
+    fun `귀갓길 중 문 열림·닫힘은 중간 하차로 보고 단계와 복구를 그대로 둬요`() {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        val stepsBefore = steps.size
+
+        flow.onPassengerDoorChanged(true)
+        flow.onPassengerDoorChanged(false)
+
+        assertEquals(MajiStep.RIDING_HOME, flow.step)
+        assertEquals(stepsBefore, steps.size)  // 단계가 바뀌지 않았어요
+        assertEquals(null, control.restored)   // 복구는 하지 않았어요
+        assertEquals(1, control.stopSeatCount) // 정지는 처음 탑승 때 한 번뿐이에요
+        assertEquals(listOf("greeting:엄마", "song:엄마"), greeter.played)
+    }
+
+    @Test
+    fun `최종 하차 버튼을 누르면 FINISHED가 되고 원래 상태로 복구해요`() {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        flow.onPassengerDoorChanged(true)
+        flow.onPassengerDoorChanged(false)
+
+        flow.finish()
+
+        assertEquals(MajiStep.FINISHED, flow.step)
+        assertEquals(control.original, control.restored)
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
         var preparedClimate: Climate? = null
         var preparedSeatMoveMs: Int? = null
         var stopSeatCalled = false
+        var stopSeatCount = 0
         val rideHomeFor = mutableListOf<String>()
         var restored: PassengerState? = null
 
@@ -231,6 +269,7 @@ class MajiFlowTest {
         }
         override fun stopSeat() {
             stopSeatCalled = true
+            stopSeatCount++
         }
         override fun applyRideHome(profile: Profile) {
             rideHomeFor.add(profile.name)
