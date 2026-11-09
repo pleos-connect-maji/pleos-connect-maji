@@ -1,6 +1,7 @@
 package com.maji.voice
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -25,18 +26,32 @@ import com.maji.contract.Profile
  *   목록에 없으면 파일만 틀어요.
  * - 인사 중에 불리면 건너뛰어요 (인사를 끊지 않아요). 안내음 중에 불리면 새 안내음으로 바꿔요.
  *
- * stopAll(): 전부 멈추고 onDone은 부르지 않아요. (맞이 취소 때 노래가 나오거나 오늘만의 인사가 지워지지 않게)
+ * playSong (#16)
+ * - songUri를 한 번만 재생해요 (반복 없음). null이거나 비어 있으면 건너뛰어요.
+ * - 인사·안내음과 다른 플레이어(음악용)로 틀어요. 노래 중에 또 불리면 새 노래로 바꿔요.
+ * - 새 인사가 시작되면 노래는 멈춰요. 안내음은 노래와 같이 나와요 (소리 낮추기는 #17).
+ * - 실패해도 로그만 남겨요.
  *
- * playSong(#16), 오디오 포커스(#17)는 아직 비어 있어요.
+ * 오디오 포커스 (#17)
+ * - 인사·안내음 동안 포커스(transient may duck)를 잡아서 다른 앱 음악을 낮추고, 끝나거나 멈추면 꼭 돌려줘요.
+ *   거절돼도 재생은 해요.
+ * - 노래 동안 포커스(transient)를 잡아서 다른 앱 음악을 잠깐 멈추고, 끝나면 돌려줘요.
+ *   전화·내비 등에 포커스를 뺏기면 노래를 멈춰요 (한 번만 트는 노래라 이어 틀지 않음).
+ * - 같은 앱 소리는 시스템이 낮춰 주지 않아서, 노래 중 안내음이 나오면 노래 볼륨을 [duckVolume]로 직접 낮췄다가 되돌려요.
+ *
+ * stopAll(): 노래까지 전부 멈추고 onDone은 부르지 않아요. (맞이 취소 때 노래가 나오거나 오늘만의 인사가 지워지지 않게)
  */
 class PleosGreeter(
     private val speaker: Speaker,
     private val player: AudioPlayer,
+    private val songPlayer: AudioPlayer,
     private val scheduler: Scheduler,
+    private val focus: AudioFocus,
     private val defaultGreetings: List<String>,
     private val log: (String) -> Unit = {},
     private val startTimeoutMs: Long = START_TIMEOUT_MS,
-    private val maxSpeakMs: Long = MAX_SPEAK_MS
+    private val maxSpeakMs: Long = MAX_SPEAK_MS,
+    private val duckVolume: Float = DUCK_VOLUME
 ) : Greeter {
 
     private enum class Kind(val label: String) { GREETING("인사"), NOTICE("안내음") }
@@ -44,9 +59,11 @@ class PleosGreeter(
     // 재생할 때마다 1씩 올려요. 콜백이 왔을 때 번호가 다르면 이미 멈춘(지난) 재생이라 무시해요.
     private var session = 0
     private var playing: Kind? = null
+    private var songSession = 0
     private var cancelTimer: (() -> Unit)? = null
 
     override fun playGreeting(profile: Profile, onDone: () -> Unit) {
+        stopSong()
         speakOrPlay(
             kind = Kind.GREETING,
             text = GreetingRules.textFor(profile, defaultGreetings),
@@ -59,7 +76,36 @@ class PleosGreeter(
     }
 
     override fun playSong(profile: Profile) {
-        log("playSong(${profile.name}) - #16에서 구현 예정")
+        val uri = profile.songUri?.trim()
+        if (uri.isNullOrEmpty()) {
+            log("노래 없음 (songUri 비어 있음) → 건너뜀")
+            return
+        }
+        stopSong() // 앞의 노래와 포커스 정리
+        val id = ++songSession
+        log("노래 재생: $uri")
+        focus.requestSong(onLost = {
+            if (id == songSession) {
+                log("노래 포커스를 뺏겨서 노래 멈춤")
+                stopSong()
+            }
+        })
+        songPlayer.play(
+            uri,
+            onDone = {
+                if (id == songSession) {
+                    log("노래 끝: $uri")
+                    focus.abandonSong()
+                }
+            },
+            onError = { reason ->
+                if (id == songSession) {
+                    log("노래 재생 실패: $uri ($reason)")
+                    focus.abandonSong()
+                }
+            }
+        )
+        if (playing != null) songPlayer.setVolume(duckVolume) // 안내음 중에 시작하면 처음부터 낮게
     }
 
     override fun playNotice(audio: String) {
@@ -84,12 +130,15 @@ class PleosGreeter(
     override fun stopAll() {
         log("stopAll")
         startNewSession()
+        stopSong()
     }
 
     // TTS로 읽고, 안 되면 files를 앞에서부터 틀어요. 어떤 길로 가든 onFinish는 한 번 (stopAll·새 재생으로 끊기면 안 불림)
     private fun speakOrPlay(kind: Kind, text: String?, files: List<String>, onFinish: (how: String) -> Unit) {
         val id = startNewSession()
         playing = kind
+        if (!focus.requestSpeech()) log("포커스 거절됐지만 ${kind.label}은 재생해요")
+        songPlayer.setVolume(duckVolume) // 노래가 나오고 있으면 낮춰요
         var finished = false
         var usingFile = false // 파일로 넘어간 뒤에는 늦게 온 TTS 신호를 무시해요
 
@@ -99,7 +148,7 @@ class PleosGreeter(
         fun finish(how: String) {
             if (!isCurrent()) return
             finished = true
-            playing = null
+            releaseSpeechFocus()
             clearTimer()
             onFinish(how)
         }
@@ -167,10 +216,24 @@ class PleosGreeter(
         speaker.release()
     }
 
+    private fun stopSong() {
+        songSession++
+        songPlayer.stop()
+        focus.abandonSong()
+    }
+
+    // 인사·안내음이 끝나거나 멈췄을 때: 포커스 반환, 노래 볼륨 원래대로
+    private fun releaseSpeechFocus() {
+        if (playing == null) return
+        playing = null
+        focus.abandonSpeech()
+        songPlayer.setVolume(1f)
+    }
+
     // 지난 재생을 조용히 멈추고 새 번호를 받아요
     private fun startNewSession(): Int {
         session++
-        playing = null
+        releaseSpeechFocus()
         clearTimer()
         speaker.stop()
         player.stop()
@@ -191,6 +254,7 @@ class PleosGreeter(
         private const val TAG = "MajiVoice"
         const val START_TIMEOUT_MS = 3_000L
         const val MAX_SPEAK_MS = 15_000L
+        const val DUCK_VOLUME = 0.3f
 
         /** 앱에서 쓸 진짜 Greeter. 메인 스레드에서 만들어 주세요 */
         fun create(context: Context): PleosGreeter {
@@ -199,7 +263,14 @@ class PleosGreeter(
             return PleosGreeter(
                 speaker = PleosTtsSpeaker(app, log = log),
                 player = MediaAudioPlayer(app, log = log),
+                songPlayer = MediaAudioPlayer(
+                    app,
+                    usage = AudioAttributes.USAGE_MEDIA,
+                    contentType = AudioAttributes.CONTENT_TYPE_MUSIC,
+                    log = log
+                ),
                 scheduler = MainScheduler(),
+                focus = AndroidAudioFocus(app, log = log),
                 defaultGreetings = app.resources.getStringArray(R.array.greeting_presets).toList(),
                 log = log
             )
