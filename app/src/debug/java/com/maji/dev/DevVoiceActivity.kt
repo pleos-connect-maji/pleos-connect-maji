@@ -26,6 +26,7 @@ import com.maji.contract.Profile
 import com.maji.voice.GreetingRules
 import com.maji.voice.MainScheduler
 import com.maji.voice.MediaAudioPlayer
+import com.maji.voice.Notices
 import com.maji.voice.PleosGreeter
 import com.maji.voice.Speaker
 
@@ -82,7 +83,7 @@ private fun DevVoiceScreen() {
 
     Row(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("E 음성 확인 (#15 인사)", style = MaterialTheme.typography.titleLarge)
+            Text("E 음성 확인 (#15 인사, #18 안내음)", style = MaterialTheme.typography.titleLarge)
             Button(onClick = { play("고른 인사", mom) }, modifier = Modifier.fillMaxWidth()) {
                 Text("1. 고른 인사 (greetingText)")
             }
@@ -94,6 +95,31 @@ private fun DevVoiceScreen() {
             }
             Button(onClick = { play("대체 파일", mom, fileOnly) }, modifier = Modifier.fillMaxWidth()) {
                 Text("4. TTS 실패 흉내 → 기본 파일 (${GreetingRules.DEFAULT_GREETING_AUDIO})")
+            }
+            Button(onClick = {
+                log.add("▶ 안내음 준비 시작")
+                greeter.playNotice(Notices.PREPARE)
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("6. 안내음: 자리 준비 시작 (${Notices.PREPARE})")
+            }
+            Button(onClick = {
+                log.add("▶ 안내음 준비 끝")
+                greeter.playNotice(Notices.PREPARE_DONE)
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("7. 안내음: 자리 준비 끝 (${Notices.PREPARE_DONE})")
+            }
+            Button(onClick = {
+                log.add("▶ 안내음 파일만")
+                fileOnly.playNotice(Notices.PREPARE)
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("8. TTS 실패 흉내 → 안내음 파일")
+            }
+            Button(onClick = {
+                log.add("▶ 인사 중 안내음 (안내음은 건너뛰어야 정상)")
+                play("고른 인사", mom)
+                greeter.playNotice(Notices.PREPARE)
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("9. 인사 중에 안내음 → 인사만 나와야 정상")
             }
             OutlinedButton(onClick = {
                 greeter.stopAll()
