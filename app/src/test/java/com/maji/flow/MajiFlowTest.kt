@@ -7,6 +7,9 @@ import com.maji.contract.PassengerState
 import com.maji.contract.Profile
 import com.maji.contract.VehicleControl
 import com.maji.profile.FakeProfileRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,11 +30,16 @@ class MajiFlowTest {
     private val greeter = FakeGreeter()
     private val steps = mutableListOf<MajiStep>()
 
+    // 테스트에서는 저장이 바로 끝나도록 Unconfined 범위를 써요
+    private val scope = CoroutineScope(Dispatchers.Unconfined)
+    private val repo = FakeProfileRepository(listOf(mom))
+
     // 12월 기준 (겨울 설정 사용)
     private val flow = MajiFlowImpl(
         control = control,
-        profiles = FakeProfileRepository(listOf(mom)),
+        profiles = repo,
         greeter = greeter,
+        scope = scope,
         month = { 12 }
     ).also { it.addListener { step -> steps.add(step) } }
 
@@ -146,6 +154,7 @@ class MajiFlowTest {
             control = control,
             profiles = FakeProfileRepository(listOf(summerOnly)),
             greeter = greeter,
+            scope = scope,
             month = { 12 }
         )
         flow.start(summerOnly)
@@ -154,6 +163,62 @@ class MajiFlowTest {
 
         assertEquals(Climate(), control.preparedClimate)
         assertEquals(500, control.preparedSeatMoveMs)
+    }
+
+    // ───────────── 학습과 오늘만의 인사 ─────────────
+
+    @Test
+    fun `탑승자가 바꾼 열선만 최종 하차 때 그 계절에 저장해요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)  // 겨울 설정: 열선 2단, 23℃
+        flow.onPassengerDoorChanged(true)
+        flow.onPassengerHeatChanged(1)    // 탑승자가 1단으로 바꿈
+        flow.finish()
+
+        assertEquals(Climate(seatHeat = 1, temperature = 23f), repo.get(1)!!.winter)
+    }
+
+    @Test
+    fun `자리 준비 중에 바뀐 값은 탑승자가 바꾼 게 아니라서 기록하지 않아요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onPassengerHeatChanged(3)    // 준비 중 변화
+        flow.finish()
+
+        assertEquals(Climate(seatHeat = 2, temperature = 23f), repo.get(1)!!.winter)
+    }
+
+    @Test
+    fun `맞이를 취소하면 바꾼 값을 저장하지 않아요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onPassengerHeatChanged(1)
+        flow.cancel()
+
+        assertEquals(Climate(seatHeat = 2, temperature = 23f), repo.get(1)!!.winter)
+    }
+
+    @Test
+    fun `오늘만의 인사는 한 번 읽고 나면 비워요`() = runBlocking {
+        val special = mom.copy(specialGreetingText = "생일 축하해!")
+        val specialRepo = FakeProfileRepository(listOf(special))
+        val specialFlow = MajiFlowImpl(
+            control = control,
+            profiles = specialRepo,
+            greeter = greeter,
+            scope = scope,
+            month = { 12 }
+        )
+        specialFlow.start(special)
+        specialFlow.onParkChanged(true)
+        specialFlow.onParkingBrakeChanged(true)
+        specialFlow.onPassengerDoorChanged(true)
+
+        assertEquals(null, specialRepo.get(1)!!.specialGreetingText)
     }
 
     // ───────────── 중간 하차와 최종 하차 (#25) ─────────────
@@ -202,6 +267,19 @@ class MajiFlowTest {
         flow.onParkingBrakeChanged(true)
 
         assertEquals(listOf("audio/prepare_notice.mp3", "audio/prepare_done.mp3"), greeter.notices)
+    }
+
+    @Test
+    fun `바꿨다가 준비 값으로 되돌리면 저장하지 않아요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onParkingBrakeChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onPassengerHeatChanged(1)    // 바꿈
+        flow.onPassengerHeatChanged(2)    // 다시 준비 값(2단)으로 돌림
+        flow.finish()
+
+        assertEquals(Climate(seatHeat = 2, temperature = 23f), repo.get(1)!!.winter)
     }
 
     // ───────────── 가짜 B·E ─────────────
