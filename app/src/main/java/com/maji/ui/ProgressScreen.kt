@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -120,6 +122,7 @@ fun ProgressScreen(
     climate: Climate? = null
 ) {
     val active = step != MajiStep.IDLE && step != MajiStep.FINISHED
+    var askFinish by remember { mutableStateOf(false) }  // 최종 하차 전에 한 번 더 물어봐요
 
     Column(
         modifier = modifier
@@ -134,7 +137,7 @@ fun ProgressScreen(
 
         if (active) {
             Button(
-                onClick = onFinish,
+                onClick = { askFinish = true },
                 enabled = !drivingRestricted,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -151,6 +154,23 @@ fun ProgressScreen(
             ) {
                 Text(text = "맞이 취소", style = MaterialTheme.typography.titleLarge)
             }
+        }
+
+        if (askFinish) {
+            AlertDialog(
+                onDismissRequest = { askFinish = false },
+                title = { Text("하차하시겠어요?") },
+                text = { Text("하차하면 자리를 원래대로 되돌리고 맞이를 끝내요.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        askFinish = false
+                        onFinish()
+                    }) { Text("예") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { askFinish = false }) { Text("아니오") }
+                }
+            )
         }
     }
 }
