@@ -70,9 +70,17 @@ class MajiFlowTest {
     // ───────────── 조건 ─────────────
 
     @Test
-    fun `P단만 들어가고 브레이크가 안 걸리면 준비하지 않아요`() {
+    fun `P단에 들어가면 주차 브레이크 신호 없이도 자리 준비를 시작해요`() {
         flow.start(mom)
         flow.onParkChanged(true)
+        assertEquals(MajiStep.PREPARING, flow.step)
+        assertEquals(Climate(seatHeat = 2, temperature = 23f), control.preparedClimate)
+    }
+
+    @Test
+    fun `P단이 아직 아니면 준비하지 않아요`() {
+        flow.start(mom)
+        flow.onParkingBrakeChanged(true)
         assertEquals(MajiStep.HEADING, flow.step)
         assertEquals(null, control.preparedClimate)
     }
