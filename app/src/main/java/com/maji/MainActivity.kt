@@ -31,7 +31,10 @@ import com.maji.contract.Profile
 import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
 import com.maji.control.PleosVehicleControl
+import com.maji.flow.FlowDatabase
 import com.maji.flow.MajiFlowImpl
+import com.maji.flow.RoomFlowStateStore
+import kotlinx.coroutines.launch
 import com.maji.profile.RoomProfileRepository
 import com.maji.signal.PleosVehicleSignals
 import com.maji.ui.ProfileEditRoute
@@ -75,7 +78,8 @@ private fun MajiApp() {
     val control = remember { PleosVehicleControl(context) }
     val greeter = remember { PleosGreeter.create(context) }
     val scope = rememberCoroutineScope()  // 흐름이 저장을 백그라운드에서 해요 (오늘만의 인사 비우기)
-    val flow = remember { MajiFlowImpl(control, repo, greeter, scope) }
+    val flowStore = remember { RoomFlowStateStore(FlowDatabase.get(context).flowSnapshotDao()) }  // 맞이 상태 저장 (#26)
+    val flow = remember { MajiFlowImpl(control, repo, greeter, scope, stateStore = flowStore) }
     val signals = remember { PleosVehicleSignals(context) }
 
     var drivingRestricted by remember { mutableStateOf(false) }
@@ -96,6 +100,7 @@ private fun MajiApp() {
             step = it
             if (it == MajiStep.HEADING) seatSetupDone = false  // 새 맞이마다 자리 설정을 다시 물어요
         }
+        scope.launch { flow.restoreSavedIfFresh() }  // 저장된 맞이가 있으면 되살려요 (#26)
         signals.start(object : VehicleSignals.Listener by flow {
             override fun onDrivingRestrictionChanged(isRestricted: Boolean) {
                 drivingRestricted = isRestricted
