@@ -37,6 +37,9 @@ import com.maji.signal.PleosVehicleSignals
 import com.maji.ui.ProfileEditRoute
 import com.maji.ui.ProfileListRoute
 import com.maji.ui.ProgressRoute
+import com.maji.ui.SeatSetupRoute
+import com.maji.ui.needsSeatSetup
+import java.time.LocalDate
 import com.maji.ui.StartRoute
 import com.maji.voice.PleosGreeter
 
@@ -79,13 +82,43 @@ private fun MajiApp() {
     var step by remember { mutableStateOf(flow.step) }
     var screen by remember { mutableStateOf<AppScreen>(AppScreen.Home) }
 
+    // 자리 설정 화면(#46)에 쓰는 차 상태. 나경 신호 값을 기억해 둬요.
+    var isPark by remember { mutableStateOf(false) }
+    var doorOpen by remember { mutableStateOf(false) }
+    var currentHeat by remember { mutableStateOf<Int?>(null) }
+    var currentTemp by remember { mutableStateOf<Float?>(null) }
+    var seatSetupDone by remember { mutableStateOf(false) }
+
     // 앱이 보이는 동안만 신호를 받고, 나갈 때 멈추고 제어를 풀어요.
-    // 신호는 흐름에 그대로 넘기고, 주행 상태만 화면에도 따로 넘겨요.
+    // 신호는 흐름에 그대로 넘기고, 화면에 필요한 값만 따로 기억해요.
     DisposableEffect(Unit) {
-        flow.addListener { step = it }
+        flow.addListener {
+            step = it
+            if (it == MajiStep.HEADING) seatSetupDone = false  // 새 맞이마다 자리 설정을 다시 물어요
+        }
         signals.start(object : VehicleSignals.Listener by flow {
             override fun onDrivingRestrictionChanged(isRestricted: Boolean) {
                 drivingRestricted = isRestricted
+            }
+
+            override fun onParkChanged(park: Boolean) {
+                isPark = park
+                flow.onParkChanged(park)
+            }
+
+            override fun onPassengerDoorChanged(isOpen: Boolean) {
+                doorOpen = isOpen
+                flow.onPassengerDoorChanged(isOpen)
+            }
+
+            override fun onPassengerHeatChanged(level: Int) {
+                currentHeat = level
+                flow.onPassengerHeatChanged(level)
+            }
+
+            override fun onPassengerTemperatureChanged(celsius: Float) {
+                currentTemp = celsius
+                flow.onPassengerTemperatureChanged(celsius)
             }
         })
         onDispose {
@@ -94,7 +127,32 @@ private fun MajiApp() {
         }
     }
 
-    when (val current = screen) {
+    // 자리 설정 화면: 맞이 중이고, 조수석 문이 닫혀 있고, 아직 P단이 아니고, 오늘 계절 값이 없을 때 (원영 요청)
+    val active = step != MajiStep.IDLE && step != MajiStep.FINISHED
+    // 자리 설정 화면: 조건은 SeatSetupRules.needsSeatSetup에 있어요 (원영 답변 반영: 정차 중에 띄움)
+    val seatSetupProfile = flow.profile.takeIf {
+        it != null && needsSeatSetup(
+            active = active,
+            seatSetupDone = seatSetupDone,
+            isPark = isPark,
+            doorOpen = doorOpen,
+            climateToday = repo.climateFor(it, repo.seasonFor(LocalDate.now().monthValue))
+        )
+    }
+
+    if (seatSetupProfile != null && screen == AppScreen.Home) {
+        SeatSetupRoute(
+            repo = repo,
+            profile = seatSetupProfile,
+            currentHeat = currentHeat,
+            currentTemp = currentTemp,
+            drivingRestricted = drivingRestricted,
+            onSaved = { seatSetupDone = true },
+            onSkip = { seatSetupDone = true },
+            onHeatChange = { control.setSeatHeat(it) },
+            onTempChange = { celsius -> if (celsius != null) control.setTemperature(celsius) }
+        )
+    } else when (val current = screen) {
         AppScreen.Home -> HomeScreen(
             repo = repo,
             flow = flow,

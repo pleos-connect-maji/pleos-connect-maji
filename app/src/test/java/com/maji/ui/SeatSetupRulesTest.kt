@@ -11,8 +11,8 @@ class SeatSetupRulesTest {
     private val hasClimate: Climate? = Climate(seatHeat = 2, temperature = 22f)
 
     @Test
-    fun `맞이 중이고 문이 닫혀 있고 P가 아니고 오늘 값이 없으면 띄워요`() {
-        assertEquals(true, needsSeatSetup(active = true, seatSetupDone = false, isPark = false, doorOpen = false, climateToday = noClimate))
+    fun `맞이 중이고 정차 중이고 문이 닫혀 있고 오늘 값이 없으면 띄워요`() {
+        assertEquals(true, needsSeatSetup(active = true, seatSetupDone = false, isPark = true, doorOpen = false, climateToday = noClimate))
     }
 
     @Test
@@ -26,8 +26,8 @@ class SeatSetupRulesTest {
     }
 
     @Test
-    fun `P단이면 띄우지 않아요`() {
-        assertEquals(false, needsSeatSetup(active = true, seatSetupDone = false, isPark = true, doorOpen = false, climateToday = noClimate))
+    fun `주행 중(P단이 아님)이면 띄우지 않아요`() {
+        assertEquals(false, needsSeatSetup(active = true, seatSetupDone = false, isPark = false, doorOpen = false, climateToday = noClimate))
     }
 
     @Test
