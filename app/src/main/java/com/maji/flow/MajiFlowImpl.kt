@@ -21,7 +21,8 @@ class MajiFlowImpl(
     private val profiles: ProfileRepository,
     private val greeter: Greeter,
     private val scope: CoroutineScope,  // 저장(suspend)을 부르는 곳
-    private val month: () -> Int = { LocalDate.now().monthValue }
+    private val month: () -> Int = { LocalDate.now().monthValue },
+    private val destinations: DestinationSetter? = null  // 맞이 장소 내비 목적지 (#27)
 ) : MajiFlow, VehicleSignals.Listener {
 
     private var current = MajiStep.IDLE
@@ -52,6 +53,7 @@ class MajiFlowImpl(
         preparedClimate = null
         changedHeat = null
         changedTemperature = null
+        profile.place?.let { destinations?.requestDestination(it) }
         moveTo(MajiStep.HEADING)
     }
 
@@ -128,6 +130,7 @@ class MajiFlowImpl(
         savedState?.let { control.restore(it) }
         savedState = null
         greeter.stopAll()
+        destinations?.cancelDestination()
         moveTo(MajiStep.FINISHED)
     }
 
