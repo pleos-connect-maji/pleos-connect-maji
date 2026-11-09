@@ -7,6 +7,7 @@ import com.maji.contract.MajiStep
 import com.maji.contract.PassengerState
 import com.maji.contract.Profile
 import com.maji.contract.ProfileRepository
+import com.maji.contract.Season
 import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
 import com.maji.voice.Notices
@@ -22,7 +23,9 @@ class MajiFlowImpl(
     private val greeter: Greeter,
     private val scope: CoroutineScope,  // 저장(suspend)을 부르는 곳
     private val month: () -> Int = { LocalDate.now().monthValue },
-    private val destinations: DestinationSetter? = null  // 맞이 장소 내비 목적지 (#27)
+    private val destinations: DestinationSetter? = null,  // 맞이 장소 내비 목적지 (#27)
+    private val stateStore: FlowStateStore? = null,  // 맞이 상태 저장 (#26)
+    private val now: () -> Long = { System.currentTimeMillis() }
 ) : MajiFlow, VehicleSignals.Listener {
 
     private var current = MajiStep.IDLE
@@ -36,6 +39,7 @@ class MajiFlowImpl(
     private var preparedClimate: Climate? = null  // 자리 준비 때 맞춘 값. 이 값과 다르게 바뀐 칸만 학습해요
     private var changedHeat: Int? = null
     private var changedTemperature: Float? = null
+    private var currentSeason: Season? = null  // 맞이를 시작할 때 정한 계절 (학습과 복원에 씀)
 
     override val step: MajiStep get() = current
     override val profile: Profile? get() = currentProfile
@@ -54,6 +58,7 @@ class MajiFlowImpl(
         changedHeat = null
         changedTemperature = null
         profile.place?.let { destinations?.requestDestination(it) }
+        currentSeason = profiles.seasonFor(month())
         moveTo(MajiStep.HEADING)
     }
 
@@ -120,6 +125,7 @@ class MajiFlowImpl(
                 // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
                 val climate = profiles.climateFor(fresh, profiles.seasonFor(month())) ?: Climate()
                 preparedClimate = climate
+                persist()  // 준비 값이 생겼으니 저장해요 (#26)
                 greeter.playNotice(Notices.PREPARE)
                 control.preparePassenger(climate, fresh.seatMoveMs) {
                     // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
@@ -146,7 +152,7 @@ class MajiFlowImpl(
         val heat = changedHeat
         val temperature = changedTemperature
         if (heat == null && temperature == null) return
-        val season = profiles.seasonFor(month())
+        val season = currentSeason ?: profiles.seasonFor(month())
         val changed = Climate(seatHeat = heat, temperature = temperature)
         scope.launch { profiles.learn(p.id, season, changed) }
     }
@@ -161,6 +167,48 @@ class MajiFlowImpl(
 
     private fun moveTo(next: MajiStep) {
         current = next
+        if (next == MajiStep.IDLE || next == MajiStep.FINISHED) forgetSaved() else persist()
         listeners.forEach { it(next) }
+    }
+
+    // 지금 맞이 상태를 저장해요 (#26). 맞이 대상이나 계절이 없으면 저장하지 않아요.
+    private fun persist() {
+        val id = currentProfile?.id ?: return
+        val season = currentSeason ?: return
+        val snapshot = FlowSnapshot(
+            step = current,
+            profileId = id,
+            season = season,
+            savedState = savedState,
+            preparedClimate = preparedClimate,
+            savedAtMillis = now()
+        )
+        scope.launch { stateStore?.save(snapshot) }
+    }
+
+    // 맞이가 끝나면 저장된 맞이를 지워요 (#26)
+    private fun forgetSaved() {
+        scope.launch { stateStore?.clear() }
+    }
+
+    // 앱을 다시 켰을 때 저장된 맞이를 되살려요 (#26). 하루가 지났으면 버려요.
+    // 소리(인사, 안내음, 노래)는 다시 재생하지 않아요 (이현 답변).
+    // 탑승자 정보는 DB 최신 값을 써요. 없으면 null로 두고, 학습만 건너뛰어요 (원영 답변).
+    suspend fun restoreSavedIfFresh(): Boolean {
+        val store = stateStore ?: return false
+        if (current != MajiStep.IDLE) return false
+        val snapshot = store.load() ?: return false
+        if (!FlowRestoreRules.isRestorable(snapshot, now())) {
+            store.clear()
+            return false
+        }
+        currentProfile = profiles.get(snapshot.profileId)
+        currentSeason = snapshot.season
+        savedState = snapshot.savedState
+        preparedClimate = snapshot.preparedClimate
+        // 저장 기록을 다시 쓰지 않도록, 단계만 바꾸고 알려 줘요
+        current = snapshot.step
+        listeners.forEach { it(snapshot.step) }
+        return true
     }
 }
