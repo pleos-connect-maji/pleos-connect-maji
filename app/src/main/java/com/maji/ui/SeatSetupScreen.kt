@@ -1,6 +1,10 @@
 package com.maji.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,9 +27,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -33,6 +41,7 @@ import com.maji.contract.Climate
 import com.maji.contract.Profile
 import com.maji.contract.ProfileRepository
 import com.maji.contract.Season
+import com.maji.contract.VehicleControl
 import com.maji.profile.FakeProfileRepository
 import com.maji.profile.ProfileRules
 import kotlinx.coroutines.launch
@@ -47,8 +56,11 @@ import java.util.Locale
 // 차와 연결되는 값 (C가 넘겨 줘요):
 //   currentHeat / currentTemp  = 지금 차 상태 (A의 onPassengerHeatChanged / onPassengerTemperatureChanged)
 //                                 탑승자가 차 버튼으로 바꿔도 화면이 따라 바뀌어요
-//   onHeatChange / onTempChange = 화면 버튼을 누르면 차에 바로 반영 (B 함수 정해지면 C가 연결)
-// 시트 ◀ ▶는 B 함수가 정해지면 추가해요.
+//   control = B의 VehicleControl. 흐름(C)이 쓰는 것과 "같은 것 하나"를 넘겨 줘야 해요
+//             (따로 만들면 시트 움직인 기록이 나뉘어서 하차 때 원위치가 안 돼요)
+//     열선 버튼 → control.setSeatHeat(-3..3), 온도 버튼 → control.setTemperature (그대로 두기면 안 보냄)
+//     시트 ◀ ▶ → 누르는 동안 control.startSeatMove(forward), 떼면 control.stopSeatMove()가 움직인 ms를 알려 줘요
+//   control이 null이면(미리보기·테스트) 화면만 바뀌고 차에는 안 보내요
 
 const val DEFAULT_TEMP = 22.0f
 private const val TEMP_STEP = 0.5f
@@ -64,7 +76,8 @@ fun SeatSetupRoute(
     onSaved: () -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
-    onHeatChange: (Int) -> Unit = {},
+    control: VehicleControl? = null,
+    onHeatChange: (Int) -> Unit = {},      // control 대신 직접 연결하고 싶을 때만 (control이 있으면 안 써요)
     onTempChange: (Float?) -> Unit = {},
     month: Int = LocalDate.now().monthValue
 ) {
@@ -75,12 +88,17 @@ fun SeatSetupRoute(
         currentHeat = currentHeat,
         currentTemp = currentTemp,
         drivingRestricted = drivingRestricted,
-        onHeatChange = onHeatChange,
-        onTempChange = onTempChange,
-        onSave = { season, climate ->
+        onHeatChange = { level -> if (control != null) control.setSeatHeat(level) else onHeatChange(level) },
+        onTempChange = { t ->
+            if (control != null) t?.let { control.setTemperature(it) }  // null(그대로 두기)이면 안 보냄
+            else onTempChange(t)
+        },
+        onSeatMoveStart = { forward -> control?.startSeatMove(forward) },
+        onSeatMoveStop = { control?.stopSeatMove() ?: 0 },
+        onSave = { season, climate, seatMoveMs ->
             scope.launch {
                 val latest = repo.get(profile.id) ?: profile  // 그사이 바뀐 이름·인사를 덮어쓰지 않게
-                repo.save(ProfileRules.withClimate(latest, season, climate))
+                repo.save(ProfileRules.withClimate(latest, season, climate).copy(seatMoveMs = seatMoveMs))
                 onSaved()
             }
         },
@@ -98,7 +116,9 @@ fun SeatSetupScreen(
     drivingRestricted: Boolean,
     onHeatChange: (Int) -> Unit,
     onTempChange: (Float?) -> Unit,
-    onSave: (Season, Climate) -> Unit,
+    onSeatMoveStart: (forward: Boolean) -> Unit,
+    onSeatMoveStop: () -> Int,             // 이번에 움직인 ms (앞 +, 뒤 -)
+    onSave: (Season, Climate, Int) -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -109,6 +129,8 @@ fun SeatSetupScreen(
     var heat by remember { mutableIntStateOf(saved?.seatHeat ?: currentHeat ?: 0) }
     var temp by remember { mutableFloatStateOf(saved?.temperature ?: currentTemp ?: DEFAULT_TEMP) }
     var keepTemp by remember { mutableStateOf(saved != null && saved.temperature == null) }
+    // 시트: 원래 위치에서 얼마나 움직였는지 (맞이 준비 때 이미 profile.seatMoveMs만큼 움직여 둔 상태에서 시작)
+    var seatMs by remember { mutableIntStateOf(profile.seatMoveMs) }
 
     // 탑승자가 차 버튼으로 바꾸면 화면도 따라가요 (A 신호)
     LaunchedEffect(currentHeat) { currentHeat?.let { heat = it } }
@@ -151,7 +173,7 @@ fun SeatSetupScreen(
         ) {
             Text(text = title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             Button(
-                onClick = { onSave(season, Climate(seatHeat = heat, temperature = if (keepTemp) null else temp)) },
+                onClick = { onSave(season, Climate(seatHeat = heat, temperature = if (keepTemp) null else temp), seatMs) },
                 enabled = !locked,
                 modifier = Modifier.heightIn(min = 56.dp)
             ) { Text("저장") }
@@ -204,8 +226,79 @@ fun SeatSetupScreen(
                     onTempChange(if (keepTemp) null else temp)
                 }
             }
+
+            // 시트: 누르고 있는 동안만 움직여요 (떼는 신호를 놓쳐도 10초면 B가 알아서 멈춰요)
+            OutlinedCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+                ) {
+                    Text(text = "시트 앞뒤", style = MaterialTheme.typography.titleLarge)
+                    Text(text = "누르고 있는 동안 움직여요", style = MaterialTheme.typography.bodyMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        HoldButton(
+                            text = "◀ 뒤",
+                            enabled = !locked && seatMs > -ProfileRules.SEAT_MOVE_MAX_MS,
+                            onPress = { onSeatMoveStart(false) },
+                            onRelease = { seatMs = (seatMs + onSeatMoveStop()).coerceIn(-ProfileRules.SEAT_MOVE_MAX_MS, ProfileRules.SEAT_MOVE_MAX_MS) }
+                        )
+                        HoldButton(
+                            text = "앞 ▶",
+                            enabled = !locked && seatMs < ProfileRules.SEAT_MOVE_MAX_MS,
+                            onPress = { onSeatMoveStart(true) },
+                            onRelease = { seatMs = (seatMs + onSeatMoveStop()).coerceIn(-ProfileRules.SEAT_MOVE_MAX_MS, ProfileRules.SEAT_MOVE_MAX_MS) }
+                        )
+                    }
+                    Text(text = seatLabel(seatMs), style = MaterialTheme.typography.titleMedium)
+                }
+            }
         }
     }
+}
+
+/** 누르는 순간 onPress, 손을 떼면(또는 화면이 닫히면) onRelease */
+@Composable
+private fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRelease: () -> Unit) {
+    val press by rememberUpdatedState(onPress)
+    val release by rememberUpdatedState(onRelease)
+    var pressed by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(16.dp)
+    val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
+
+    Box(
+        modifier = Modifier
+            .heightIn(min = 64.dp)
+            .widthIn(min = 96.dp)
+            .clip(shape)
+            .background(if (pressed) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (enabled) 1f else 0.38f), shape)
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                detectTapGestures(onPress = {
+                    pressed = true
+                    press()
+                    try {
+                        tryAwaitRelease()
+                    } finally {
+                        pressed = false
+                        release()
+                    }
+                })
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = text, style = MaterialTheme.typography.titleLarge, color = color)
+    }
+}
+
+/** 0 → "원래 위치", +1500 → "앞으로 1.5초", -800 → "뒤로 0.8초" */
+private fun seatLabel(ms: Int): String = when {
+    ms == 0 -> "원래 위치"
+    ms > 0 -> String.format(Locale.US, "앞으로 %.1f초", ms / 1000f)
+    else -> String.format(Locale.US, "뒤로 %.1f초", -ms / 1000f)
 }
 
 /** 카드 하나: 제목, 지금 차 상태, [-] 값 [+] */
@@ -280,7 +373,7 @@ private val seatPreviewProfiles = FakeProfileRepository.samples()
 private fun FirstRidePreview() {
     MaterialTheme {
         Surface {
-            SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 21.5f, false, {}, {}, { _, _ -> }, {})
+            SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 21.5f, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
         }
     }
 }
@@ -290,7 +383,7 @@ private fun FirstRidePreview() {
 private fun SeasonChangedPreview() {
     MaterialTheme {
         Surface {
-            SeatSetupScreen(seatPreviewProfiles[1], Season.SUMMER, -1, null, false, {}, {}, { _, _ -> }, {})
+            SeatSetupScreen(seatPreviewProfiles[1], Season.SUMMER, -1, null, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
         }
     }
 }
@@ -300,7 +393,7 @@ private fun SeasonChangedPreview() {
 private fun AdjustPreview() {
     MaterialTheme {
         Surface {
-            SeatSetupScreen(seatPreviewProfiles[0], Season.WINTER, 3, 24f, false, {}, {}, { _, _ -> }, {})
+            SeatSetupScreen(seatPreviewProfiles[0], Season.WINTER, 3, 24f, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
         }
     }
 }
@@ -310,7 +403,7 @@ private fun AdjustPreview() {
 private fun SeatDrivingPreview() {
     MaterialTheme {
         Surface {
-            SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 22f, true, {}, {}, { _, _ -> }, {})
+            SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 22f, true, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
         }
     }
 }
