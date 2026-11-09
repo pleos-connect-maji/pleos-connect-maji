@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.maji.contract.MajiStep
+import com.maji.contract.Profile
 import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
 import com.maji.control.PleosVehicleControl
@@ -100,7 +101,8 @@ private fun MajiApp() {
             control = control,
             step = step,
             drivingRestricted = drivingRestricted,
-            onManageProfiles = { screen = AppScreen.ProfileList }
+            onManageProfiles = { screen = AppScreen.ProfileList },
+            onEditProfile = { screen = AppScreen.ProfileEdit(it.id) }
         )
         AppScreen.ProfileList -> ProfileListRoute(
             repo = repo,
@@ -131,7 +133,8 @@ private fun HomeScreen(
     control: VehicleControl,
     step: MajiStep,
     drivingRestricted: Boolean,
-    onManageProfiles: () -> Unit
+    onManageProfiles: () -> Unit,
+    onEditProfile: (Profile) -> Unit
 ) {
     val active = step != MajiStep.IDLE && step != MajiStep.FINISHED
 
@@ -161,7 +164,8 @@ private fun HomeScreen(
             StartRoute(
                 profiles = repo,
                 flow = flow,
-                drivingRestricted = drivingRestricted
+                drivingRestricted = drivingRestricted,
+                onEdit = onEditProfile
             )
         }
     }

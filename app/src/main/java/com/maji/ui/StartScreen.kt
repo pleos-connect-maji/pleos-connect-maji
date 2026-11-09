@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ fun StartRoute(
     profiles: ProfileRepository,
     flow: MajiFlow,
     drivingRestricted: Boolean,
+    onEdit: (Profile) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val list by produceState(initialValue = emptyList<Profile>(), profiles) {
@@ -36,6 +38,7 @@ fun StartRoute(
         profiles = list,
         drivingRestricted = drivingRestricted,
         onStart = { flow.start(it) },
+        onEdit = onEdit,
         modifier = modifier
     )
 }
@@ -46,6 +49,7 @@ fun StartScreen(
     profiles: List<Profile>,
     drivingRestricted: Boolean,
     onStart: (Profile) -> Unit,
+    onEdit: (Profile) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -84,6 +88,19 @@ fun StartScreen(
                 Text(
                     text = profile.name,
                     style = MaterialTheme.typography.titleLarge
+                )
+            }
+            // 수정은 정차 중에만 (주행 중이면 막아요). 편집 화면은 원영의 탑승자 관리 화면이에요.
+            OutlinedButton(
+                onClick = { onEdit(profile) },
+                enabled = !drivingRestricted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+            ) {
+                Text(
+                    text = "${profile.name} 정보 수정",
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
         }
