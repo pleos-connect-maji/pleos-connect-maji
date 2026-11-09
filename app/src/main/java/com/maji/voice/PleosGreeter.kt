@@ -9,19 +9,25 @@ import com.maji.contract.Greeter
 import com.maji.contract.Profile
 
 /**
- * E. 음성 (#15 인사 재생)
+ * E. 음성 (#15 인사, #18 안내음)
  *
- * playGreeting 규칙
- * - 문장은 GreetingRules.textFor 순서로 골라서 TTS로 읽어요.
- * - TTS가 초기화·말하기에 실패하거나 [startTimeoutMs] 안에 시작하지 않으면 대체 파일을 틀어요.
- *   (greetingAudio → 기본 파일 순서, 하나가 안 되면 다음 것)
+ * 공통: 문장을 TTS로 읽고, TTS가 초기화·말하기에 실패하거나 [startTimeoutMs] 안에 시작하지 않으면 파일을 틀어요.
+ *       말하기가 시작됐는데 끝 신호가 안 오면 [maxSpeakMs] 뒤에 끝난 것으로 봐요.
+ *       모든 함수는 메인 스레드에서 부르고, onDone도 메인 스레드에서 불러요.
+ *
+ * playGreeting (#15)
+ * - 문장은 GreetingRules.textFor 순서, 대체 파일은 greetingAudio → 기본 파일 순서예요.
  * - 성공, 대체 파일, 전부 실패 어느 경우든 onDone을 딱 한 번 불러요. → C가 노래와 오늘만의 인사 비우기를 이어 가요.
- * - 말하기가 시작됐는데 끝 신호가 안 오면 [maxSpeakMs] 뒤에 끝난 것으로 봐요.
- * - stopAll()로 멈추면 onDone을 부르지 않아요. (맞이 취소 때 노래가 나오거나 오늘만의 인사가 지워지지 않게)
- * - 인사 중에 playGreeting이 또 불리면 앞의 인사는 조용히 끝내고(앞의 onDone 안 부름) 새로 시작해요.
- * - 모든 함수는 메인 스레드에서 부르고, onDone도 메인 스레드에서 불러요.
+ * - 재생 중이던 안내음이나 앞의 인사는 조용히 끊고(앞의 onDone 안 부름) 새 인사를 읽어요.
  *
- * playSong(#16), playNotice(#18), 오디오 포커스(#17)는 아직 비어 있어요.
+ * playNotice (#18)
+ * - audio는 assets 경로예요. Notices 목록에 있으면 그 문장을 TTS로 읽고, 실패하면 그 파일을 틀어요.
+ *   목록에 없으면 파일만 틀어요.
+ * - 인사 중에 불리면 건너뛰어요 (인사를 끊지 않아요). 안내음 중에 불리면 새 안내음으로 바꿔요.
+ *
+ * stopAll(): 전부 멈추고 onDone은 부르지 않아요. (맞이 취소 때 노래가 나오거나 오늘만의 인사가 지워지지 않게)
+ *
+ * playSong(#16), 오디오 포커스(#17)는 아직 비어 있어요.
  */
 class PleosGreeter(
     private val speaker: Speaker,
@@ -33,14 +39,57 @@ class PleosGreeter(
     private val maxSpeakMs: Long = MAX_SPEAK_MS
 ) : Greeter {
 
+    private enum class Kind(val label: String) { GREETING("인사"), NOTICE("안내음") }
+
     // 재생할 때마다 1씩 올려요. 콜백이 왔을 때 번호가 다르면 이미 멈춘(지난) 재생이라 무시해요.
     private var session = 0
+    private var playing: Kind? = null
     private var cancelTimer: (() -> Unit)? = null
 
     override fun playGreeting(profile: Profile, onDone: () -> Unit) {
+        speakOrPlay(
+            kind = Kind.GREETING,
+            text = GreetingRules.textFor(profile, defaultGreetings),
+            files = GreetingRules.fallbackAudiosFor(profile),
+            onFinish = { how ->
+                log("인사 끝 ($how) → onDone")
+                onDone()
+            }
+        )
+    }
+
+    override fun playSong(profile: Profile) {
+        log("playSong(${profile.name}) - #16에서 구현 예정")
+    }
+
+    override fun playNotice(audio: String) {
+        val path = audio.trim()
+        if (path.isEmpty()) {
+            log("playNotice: 빈 경로라 건너뜀")
+            return
+        }
+        if (playing == Kind.GREETING) {
+            log("인사 중이라 안내음 건너뜀: $path")
+            return
+        }
+        speakOrPlay(
+            kind = Kind.NOTICE,
+            text = Notices.textFor(path),
+            files = listOf(path),
+            onFinish = { how -> log("안내음 끝 ($how): $path") }
+        )
+    }
+
+    /** 전부 멈춰요. 진행 중이던 인사의 onDone은 부르지 않아요 */
+    override fun stopAll() {
+        log("stopAll")
+        startNewSession()
+    }
+
+    // TTS로 읽고, 안 되면 files를 앞에서부터 틀어요. 어떤 길로 가든 onFinish는 한 번 (stopAll·새 재생으로 끊기면 안 불림)
+    private fun speakOrPlay(kind: Kind, text: String?, files: List<String>, onFinish: (how: String) -> Unit) {
         val id = startNewSession()
-        val text = GreetingRules.textFor(profile, defaultGreetings)
-        val files = GreetingRules.fallbackAudiosFor(profile)
+        playing = kind
         var finished = false
         var usingFile = false // 파일로 넘어간 뒤에는 늦게 온 TTS 신호를 무시해요
 
@@ -50,9 +99,9 @@ class PleosGreeter(
         fun finish(how: String) {
             if (!isCurrent()) return
             finished = true
+            playing = null
             clearTimer()
-            log("인사 끝 ($how) → onDone")
-            onDone()
+            onFinish(how)
         }
 
         fun playFile(index: Int) {
@@ -62,7 +111,7 @@ class PleosGreeter(
                 return
             }
             val file = files[index]
-            log("대체 파일 재생: $file")
+            log("${kind.label} 파일 재생: $file")
             player.play(
                 file,
                 onDone = { if (id == session) finish("파일 $file") },
@@ -79,7 +128,7 @@ class PleosGreeter(
             if (!isSpeaking()) return
             usingFile = true
             clearTimer()
-            log("TTS 안 됨 ($reason) → 대체 파일")
+            log("TTS 안 됨 ($reason) → 파일")
             speaker.stop()
             playFile(0)
         }
@@ -89,7 +138,7 @@ class PleosGreeter(
             return
         }
 
-        log("TTS 인사: \"$text\"")
+        log("TTS ${kind.label}: \"$text\"")
         setTimer(startTimeoutMs) { fallBack("${startTimeoutMs}ms 안에 시작 안 함") }
         speaker.speak(text, object : Speaker.Listener {
             override fun onStart() {
@@ -112,20 +161,6 @@ class PleosGreeter(
         })
     }
 
-    override fun playSong(profile: Profile) {
-        log("playSong(${profile.name}) - #16에서 구현 예정")
-    }
-
-    override fun playNotice(audio: String) {
-        log("playNotice($audio) - #18에서 구현 예정")
-    }
-
-    /** 전부 멈춰요. 진행 중이던 인사의 onDone은 부르지 않아요 */
-    override fun stopAll() {
-        log("stopAll")
-        startNewSession()
-    }
-
     /** 다 쓰고 나면 정리 (Contract에는 없는 추가 함수예요. 화면이 사라질 때 불러요) */
     fun release() {
         stopAll()
@@ -135,6 +170,7 @@ class PleosGreeter(
     // 지난 재생을 조용히 멈추고 새 번호를 받아요
     private fun startNewSession(): Int {
         session++
+        playing = null
         clearTimer()
         speaker.stop()
         player.stop()

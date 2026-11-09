@@ -125,22 +125,129 @@ class PleosGreeterTest {
         assertEquals(1, doneCount)
     }
 
+    // ───────────── #18 안내음 ─────────────
+
+    @Test
+    fun 목록에_있는_안내음은_TTS로_읽음() {
+        greeter.playNotice(Notices.PREPARE)
+        assertEquals("자리 맞춰 둘게요", speaker.lastText)
+        speaker.start()
+        speaker.done()
+        assertTrue(player.played.isEmpty())
+    }
+
+    @Test
+    fun 안내음_TTS가_실패하면_같은_이름의_파일() {
+        greeter.playNotice(Notices.PREPARE_DONE)
+        speaker.error("UNKNOWN")
+        assertEquals(listOf(Notices.PREPARE_DONE), player.played)
+    }
+
+    @Test
+    fun 안내음_TTS가_3초_안에_시작_안_하면_파일() {
+        greeter.playNotice(Notices.PREPARE)
+        clock.advance(3_000)
+        assertEquals(listOf(Notices.PREPARE), player.played)
+    }
+
+    @Test
+    fun 목록에_없는_경로는_TTS_없이_파일만() {
+        greeter.playNotice("audio/custom.mp3")
+        assertEquals(null, speaker.lastText)
+        assertEquals(listOf("audio/custom.mp3"), player.played)
+    }
+
+    @Test
+    fun 빈_경로는_아무것도_안_함() {
+        greeter.playNotice("  ")
+        assertEquals(null, speaker.lastText)
+        assertTrue(player.played.isEmpty())
+    }
+
+    @Test
+    fun 인사_중에_온_안내음은_건너뛰고_인사는_그대로() {
+        greeter.playGreeting(mom, onDone)
+        speaker.start()
+        greeter.playNotice(Notices.PREPARE)
+        assertEquals("다녀오셨어요", speaker.lastText) // 안내음을 읽지 않음
+        assertEquals(0, speaker.stopCountAfterStart)
+        speaker.done()
+        assertEquals(1, doneCount)
+    }
+
+    @Test
+    fun 인사가_끝난_뒤의_안내음은_재생() {
+        greeter.playGreeting(mom, onDone)
+        speaker.start()
+        speaker.done()
+        greeter.playNotice(Notices.PREPARE_DONE)
+        assertEquals("자리 준비 다 됐어요", speaker.lastText)
+    }
+
+    @Test
+    fun 인사_대체_파일_재생_중에도_안내음은_건너뜀() {
+        greeter.playGreeting(mom, onDone)
+        speaker.error("UNKNOWN")
+        greeter.playNotice(Notices.PREPARE)
+        assertEquals(listOf(GreetingRules.DEFAULT_GREETING_AUDIO), player.played)
+        player.complete()
+        assertEquals(1, doneCount)
+    }
+
+    @Test
+    fun 안내음_중에_인사가_오면_안내음을_끊고_인사() {
+        greeter.playNotice(Notices.PREPARE)
+        speaker.start()
+        greeter.playGreeting(mom, onDone)
+        assertEquals("다녀오셨어요", speaker.lastText)
+        speaker.start()
+        speaker.done()
+        assertEquals(1, doneCount)
+    }
+
+    @Test
+    fun 안내음_중에_안내음이_오면_새_것으로() {
+        greeter.playNotice(Notices.PREPARE)
+        speaker.start()
+        greeter.playNotice(Notices.PREPARE_DONE)
+        assertEquals("자리 준비 다 됐어요", speaker.lastText)
+    }
+
+    @Test
+    fun 안내음_중_stopAll하면_멈추고_그다음_인사는_정상() {
+        greeter.playNotice(Notices.PREPARE)
+        speaker.error("UNKNOWN")
+        greeter.stopAll()
+        assertTrue(player.stopCount > 0)
+        greeter.playGreeting(mom, onDone)
+        speaker.start()
+        speaker.done()
+        assertEquals(1, doneCount)
+    }
+
     // ───────────── 가짜들 ─────────────
 
     private class FakeSpeaker : Speaker {
         var lastText: String? = null
         var stopCount = 0
+        var stopCountAfterStart = 0 // 마지막 onStart 이후 stop이 몇 번 불렸는지
         private var listener: Speaker.Listener? = null
 
         override fun speak(text: String, listener: Speaker.Listener) {
             lastText = text
             this.listener = listener
         }
-        override fun stop() { stopCount++ }
+        override fun stop() {
+            stopCount++
+            stopCountAfterStart++
+        }
         override fun release() {}
 
         // 진짜 SDK처럼 stop 뒤에도 늦은 콜백이 올 수 있다고 보고 리스너를 지우지 않아요
-        fun start() = listener?.onStart()
+        fun start() {
+            stopCountAfterStart = 0
+            listener?.onStart()
+        }
         fun done() = listener?.onDone()
         fun error(reason: String) = listener?.onError(reason)
     }
