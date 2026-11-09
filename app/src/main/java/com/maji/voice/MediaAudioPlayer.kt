@@ -28,6 +28,7 @@ class MediaAudioPlayer(
                 AudioAttributes.Builder().setUsage(usage).setContentType(contentType).build()
             )
             setSource(mp, source)
+            mp.isLooping = false // 한 번만 재생 (#16)
             mp.setOnPreparedListener { if (player === mp) mp.start() }
             mp.setOnCompletionListener {
                 if (player === mp) {
@@ -56,7 +57,8 @@ class MediaAudioPlayer(
 
     private fun setSource(mp: MediaPlayer, source: String) {
         when {
-            source.startsWith("content://") || source.startsWith("file://") ->
+            source.startsWith("content://") || source.startsWith("file://") ||
+                source.startsWith("http://") || source.startsWith("https://") ->
                 mp.setDataSource(appContext, Uri.parse(source))
             source.startsWith("/") -> mp.setDataSource(source)
             else -> appContext.assets.openFd(source).use { fd ->
