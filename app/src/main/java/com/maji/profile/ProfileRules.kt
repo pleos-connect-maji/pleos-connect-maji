@@ -17,7 +17,7 @@ object ProfileRules {
     const val BRIGHTNESS_MIN = 0
     const val BRIGHTNESS_MAX = 100
 
-    // TODO(#11): 근희에게 시트 끝에서 끝까지 걸리는 시간 받아서 바꾸기
+    // 시트 끝→끝 약 10초 (B 확정, #11: 전동시트 약 25cm, 초당 2~2.5cm)
     const val SEAT_MOVE_MAX_MS = 10_000
 
     // ───────────── 계절 (#3) ─────────────
