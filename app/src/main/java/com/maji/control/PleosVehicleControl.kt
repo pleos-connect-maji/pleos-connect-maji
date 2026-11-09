@@ -46,7 +46,8 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     private var capSeatHeat: Boolean? = null
     private var capTemperature: Boolean? = null
     private var allPrepareFailed = false
-    private var commandSucceeded = false // 이번 자리 준비에서 성공한 명령이 하나라도 있는지
+    private var commandSucceeded = false
+    private var ventIsSeparate: Boolean? = null // null = 아직 모름 → 열선 값 하나로 보내요 (에뮬레이터 방식) // 이번 자리 준비에서 성공한 명령이 하나라도 있는지
 
     init {
         checkControlCapabilities()
@@ -72,7 +73,13 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             )
             vehicle.getSeat().checkSeatTemperatureCapabilities(
                 { config, bounds ->
-                    main.post { capSeatHeat = canControl(config) && passengerSeat.isIn(bounds.keys); logCaps() }
+                    // 열선 범위가 음수까지면(-3..3) 열선 값 하나로 통풍까지, 0부터면 통풍이 따로 있는 차
+                    val min = bounds.entries.firstOrNull { passengerSeat.isIn(listOf(it.key)) }?.value?.minValue
+                    main.post {
+                        capSeatHeat = canControl(config) && passengerSeat.isIn(bounds.keys)
+                        if (min != null) ventIsSeparate = min >= 0
+                        logCaps()
+                    }
                 },
                 { e -> failed("열선", e) }
             )
@@ -96,11 +103,12 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     }
 
     // ───────── #9 바꾸기 전 상태 읽기 ─────────
-    // 열선·온도·창문 3개를 동시에 읽고, 3개가 다 끝나면 한 번만 알려줘요.
+    // 열선·통풍·온도·창문 4개를 동시에 읽고, 다 끝나면 한 번만 알려줘요.
     // 실패한 칸은 null (에뮬레이터는 온도 읽기가 실패해요 → C가 A의 온도 신호로 채워요).
     // SDK가 콜백을 안 주는 경우를 대비해 READ_TIMEOUT_MS가 지나면 모인 값만으로 알려줘요.
     override fun readPassengerState(onResult: (PassengerState) -> Unit) {
         var heat: Int? = null
+        var vent: Int? = null
         var temperature: Float? = null
         var window: Int? = null
         var finished = 0
@@ -109,7 +117,8 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         fun deliver(reason: String) {
             if (delivered) return
             delivered = true
-            val state = PassengerState(heat, temperature, window)
+            // 통풍이 따로 있는 차도 Contract 약속(-3..3, 음수 = 통풍) 하나로 합쳐요
+            val state = PassengerState(ControlRules.mergeHeatVent(heat, vent), temperature, window)
             Log.d(TAG, "[#9] 상태 읽기 끝($reason): $state")
             onResult(state)
         }
@@ -117,7 +126,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         // 읽기 하나가 끝날 때마다 메인 스레드에서 불러요
         fun oneDone() {
             finished++
-            if (finished == 3) deliver("3개 완료")
+            if (finished == 4) deliver("4개 완료")
         }
 
         main.postDelayed({ deliver("시간 초과") }, READ_TIMEOUT_MS)
@@ -127,6 +136,11 @@ class PleosVehicleControl(context: Context) : VehicleControl {
                 passengerSeat,
                 { v -> main.post { heat = v; oneDone() } },
                 { e -> main.post { Log.w(TAG, "[#9] 열선 읽기 실패: ${e.message}"); oneDone() } }
+            )
+            vehicle.getSeat().getHvacSeatVentilationState(
+                passengerSeat,
+                { v -> main.post { vent = v; oneDone() } },
+                { e -> main.post { Log.d(TAG, "[#9] 통풍 읽기 실패(통풍 없는 차일 수 있음): ${e.message}"); oneDone() } }
             )
             vehicle.getHVAC().getHvacTemperature(
                 passengerSeat, TemperatureUnit.CELSIUS,
@@ -194,20 +208,29 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         main.postDelayed(stopRunnable, kotlin.math.abs(target).toLong())
     }
 
-    /** 앞/뒤로 출발. 이미 움직이는 중이면 먼저 멈춰서 시간을 정산해요. */
-    private fun startSeat(forward: Boolean): Boolean {
+    /**
+     * 앞/뒤로 출발. 이미 움직이는 중이면 먼저 멈춰서 시간을 정산해요.
+     * SDK가 나중에 "출발 거절"을 알려 오면 그 출발은 기록에서 빼요 (안 움직였는데 복구 때 되돌리는 사고 방지).
+     */
+    private fun startSeat(forward: Boolean, manual: Boolean = false): Boolean {
         if (seatTracker.isMoving) stopSeat()
+        val token = seatTracker.start(forward, SystemClock.elapsedRealtime(), manual)
         return try {
             vehicle.getSeat().moveSeatForeAft(
                 passengerSeat,
                 if (forward) MoveControl.FORWARD else MoveControl.BACKWARD,
                 { _, c -> main.post { commandSucceeded = true }; Log.d(TAG, "[#11] 시트 출발: $c") },
-                { e -> Log.w(TAG, "[#11] 시트 출발 실패: ${e.message}") }
+                { e ->
+                    main.post {
+                        Log.w(TAG, "[#11] 시트 출발 거절 → 이동 기록에서 뺌: ${e.message}")
+                        seatTracker.reject(token)
+                    }
+                }
             )
-            seatTracker.start(forward, SystemClock.elapsedRealtime())
             true
         } catch (e: Exception) {
             Log.w(TAG, "[#11] 시트 출발 호출 실패: ${e.message}")
+            seatTracker.reject(token)
             false
         }
     }
@@ -223,19 +246,37 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     /** STOP을 보내고, 이번에 움직인 시간(+앞, -뒤, 안 움직였으면 0)을 재서 돌려줘요. */
     private fun stopSeatAndMeasure(): Int {
         main.removeCallbacks(stopRunnable)
-        runCatching {
-            vehicle.getSeat().moveSeatForeAft(
-                passengerSeat, MoveControl.STOP,
-                { _, c -> Log.d(TAG, "[#11] 시트 정지: $c") },
-                { e -> Log.w(TAG, "[#11] 시트 정지 실패: ${e.message}") }
-            )
-        }.onFailure { Log.w(TAG, "[#11] 시트 정지 호출 실패: ${it.message}") }
+        sendStop(attempt = 1)
 
         val wasMoving = seatTracker.isMoving
         val moved = seatTracker.stop(SystemClock.elapsedRealtime())
         if (wasMoving) Log.d(TAG, "[#11] 이번에 움직인 시간 ${moved}ms, 원래 자리에서 ${seatTracker.offsetMs}ms")
         afterSeatStop?.let { afterSeatStop = null; it() }
         return moved
+    }
+
+    /**
+     * STOP 전송. 실패하면 잠깐 뒤 다시 보내요 (최대 STOP_RETRY번).
+     * 시트가 계속 움직이면 위험하므로 정지는 "성공 확인"까지 재시도해요.
+     */
+    private fun sendStop(attempt: Int) {
+        fun retry(reason: String?) {
+            if (attempt >= STOP_RETRY) {
+                Log.e(TAG, "[#11] 시트 정지 ${attempt}번 모두 실패: $reason")
+                return
+            }
+            Log.w(TAG, "[#11] 시트 정지 실패($attempt/$STOP_RETRY) → 다시 보냄: $reason")
+            main.postDelayed({ sendStop(attempt + 1) }, STOP_RETRY_DELAY_MS)
+        }
+        try {
+            vehicle.getSeat().moveSeatForeAft(
+                passengerSeat, MoveControl.STOP,
+                { _, c -> Log.d(TAG, "[#11] 시트 정지: $c") },
+                { e -> main.post { retry(e.message) } }
+            )
+        } catch (e: Exception) {
+            retry(e.message)
+        }
     }
 
     // ───────── #10 열선 · 온도 ─────────
@@ -247,6 +288,15 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             return
         }
         val v = ControlRules.clampHeat(level)
+        if (ventIsSeparate == true) {
+            // 통풍이 따로 있는 차: 2 → 열선 2 + 통풍 0, -2 → 열선 0 + 통풍 2
+            val (h, vt) = ControlRules.splitHeatVent(v)
+            var left = 2
+            val partDone = { left--; if (left == 0) onDone() }
+            sendSeatValue("열선", h, vehicle.getSeat()::setHvacSeatTemperature, partDone)
+            sendSeatValue("통풍", vt, vehicle.getSeat()::setHvacSeatVentilation, partDone)
+            return
+        }
         try {
             vehicle.getSeat().setHvacSeatTemperature(
                 passengerSeat, v,
@@ -255,6 +305,22 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             )
         } catch (e: Exception) {
             Log.w(TAG, "[#10] 열선 호출 실패: ${e.message}")
+            main.post(onDone)
+        }
+    }
+
+    private fun sendSeatValue(
+        name: String,
+        value: Int,
+        setter: (SeatArea, Int, (SeatArea, Int?) -> Unit, (Exception) -> Unit) -> Unit,
+        onDone: () -> Unit
+    ) {
+        try {
+            setter(passengerSeat, value,
+                { _, set -> main.post { commandSucceeded = true; Log.d(TAG, "[#10] $name → $set"); onDone() } },
+                { e -> main.post { Log.w(TAG, "[#10] $name 실패: ${e.message}"); onDone() } })
+        } catch (e: Exception) {
+            Log.w(TAG, "[#10] $name 호출 실패: ${e.message}")
             main.post(onDone)
         }
     }
@@ -283,13 +349,15 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
     override fun startSeatMove(forward: Boolean) {
         Log.d(TAG, "[#46] 시트 ${if (forward) "앞으로" else "뒤로"} 누름")
-        if (!startSeat(forward)) return
+        if (!startSeat(forward, manual = true)) return
         // 떼는 신호를 놓쳐도(화면 꺼짐 등) 최대 시간이 지나면 알아서 멈춰요
         main.postDelayed(stopRunnable, ControlRules.MAX_SEAT_MOVE_MS.toLong())
     }
 
+    // 문 열림·10초 자동 정지가 뗌보다 먼저 와도, 이번 누름 동안 움직인 시간을 그대로 돌려줘요
     override fun stopSeatMove(): Int {
-        val moved = stopSeatAndMeasure()
+        stopSeatAndMeasure()
+        val moved = seatTracker.takeManualMs()
         Log.d(TAG, "[#46] 시트 뗌 → ${moved}ms")
         return moved
     }
@@ -304,9 +372,15 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
     // ───────── #12 귀갓길: 창문 닫기 · 무드등 ─────────
     // 무드등은 영역이 차마다 달라서 SDK가 알려주는 지원 영역 전체에 적용해요.
-    // 바꾸기 전 밝기·색을 기억해 두고 restore(#14)에서 되돌려요.
+    // 바꾸기 전 밝기·색·켜짐 상태를 기억해 두고 restore(#14)에서 되돌려요.
 
-    private val lightBefore = mutableMapOf<SeatArea, Pair<Int?, Int?>>() // 영역 → (밝기, 색)
+    /** 바꾸기 전 무드등 상태. 못 읽은 값은 null (그 값은 복구 때 건드리지 않아요) */
+    private data class LightSnapshot(val brightness: Int?, val color: Int?, val switch: LightSwitch?)
+
+    private val lightBefore = mutableMapOf<SeatArea, LightSnapshot>()
+
+    // 무드등 작업 회차. 복구·종료하면 올려서, 그 전에 시작된 귀갓길 작업이 늦게 도착해도 무시해요
+    private var lightRound = 0
 
     override fun applyRideHome(profile: Profile) {
         Log.d(TAG, "[#12] 귀갓길: 창문 닫기=${profile.closeWindow}, 무드등 색=${profile.lightColor}, 밝기=${profile.lightBrightness}")
@@ -327,27 +401,52 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         }
     }
 
-    /** brightness: 0..100 (앱 기준) → 차가 알려준 최소~최대 범위로 바꿔서 적용 */
+    /**
+     * brightness: 0..100 (앱 기준) → 차가 알려준 최소~최대 범위로 바꿔서 적용.
+     * 바꾸기 전 밝기·색·켜짐 상태를 읽어 두되, 읽기가 실패해도 무드등은 켜요 (못 읽은 값만 null로 기억).
+     */
     private fun applyAmbientLight(brightness: Int, argb: Int) {
         val light = vehicle.getLight()
+        val round = lightRound
+        fun stale() = round != lightRound // 그사이 복구됐으면 더 진행하지 않아요
+
+        fun write(area: SeatArea, value: Int) {
+            if (stale()) return
+            runCatching {
+                light.setAmbientLightSwitch(area, LightSwitch.ON, { _, _ -> },
+                    { e -> Log.w(TAG, "[#12] 무드등 켜기 실패: ${e.message}") })
+                light.setAmbientLightBrightness(area, value,
+                    { a, v -> Log.d(TAG, "[#12] 무드등 밝기 ${a.values.joinToString()} → $v") },
+                    { e -> Log.w(TAG, "[#12] 무드등 밝기 실패: ${e.message}") })
+                light.setAmbientLightBrightnessColor(area, argb,
+                    { a, v -> Log.d(TAG, "[#12] 무드등 색 ${a.values.joinToString()} → ${Integer.toHexString(v)}") },
+                    { e -> Log.w(TAG, "[#12] 무드등 색 실패: ${e.message}") })
+            }.onFailure { Log.w(TAG, "[#12] 무드등 호출 실패: ${it.message}") }
+        }
+
+        // 밝기 → 색 → 켜짐 순서로 읽고(실패해도 다음으로), 기억한 뒤 바꿔요
+        fun snapshotThenWrite(area: SeatArea, value: Int) {
+            fun done(b: Int?, c: Int?, sw: LightSwitch?) = main.post {
+                if (stale()) return@post
+                lightBefore.putIfAbsent(area, LightSnapshot(b, c, sw))
+                write(area, value)
+            }
+            fun readSwitch(b: Int?, c: Int?) = runCatching {
+                light.getAmbientLightSwitch(area, { sw -> done(b, c, sw) }, { done(b, c, null) })
+            }.onFailure { done(b, c, null) }
+            fun readColor(b: Int?) = runCatching {
+                light.getAmbientLightBrightnessColor(area, { c -> readSwitch(b, c) }, { readSwitch(b, null) })
+            }.onFailure { readSwitch(b, null) }
+            runCatching {
+                light.getAmbientLightBrightness(area, { b -> readColor(b) }, { readColor(null) })
+            }.onFailure { readColor(null) }
+        }
+
         try {
             light.checkAmbientLightBrightnessCapabilities(
                 { _, bounds ->
                     bounds.forEach { (area, b) ->
-                        val value = ControlRules.scaleBrightness(brightness, b.minValue, b.maxValue)
-                        // 바꾸기 전 값을 먼저 읽고 나서 바꿔요
-                        light.getAmbientLightBrightness(area, { oldB ->
-                            light.getAmbientLightBrightnessColor(area, { oldC ->
-                                main.post { lightBefore.putIfAbsent(area, oldB to oldC) }
-                                runCatching { light.setAmbientLightSwitch(area, LightSwitch.ON, { _, _ -> }, { }) }
-                                light.setAmbientLightBrightness(area, value,
-                                    { a, v -> Log.d(TAG, "[#12] 무드등 밝기 ${a.values.joinToString()} → $v") },
-                                    { e -> Log.w(TAG, "[#12] 무드등 밝기 실패: ${e.message}") })
-                                light.setAmbientLightBrightnessColor(area, argb,
-                                    { a, v -> Log.d(TAG, "[#12] 무드등 색 ${a.values.joinToString()} → ${Integer.toHexString(v)}") },
-                                    { e -> Log.w(TAG, "[#12] 무드등 색 실패: ${e.message}") })
-                            }, { e -> Log.w(TAG, "[#12] 무드등 원래 색 읽기 실패: ${e.message}") })
-                        }, { e -> Log.w(TAG, "[#12] 무드등 원래 밝기 읽기 실패: ${e.message}") })
+                        snapshotThenWrite(area, ControlRules.scaleBrightness(brightness, b.minValue, b.maxValue))
                     }
                 },
                 { e -> Log.w(TAG, "[#12] 무드등 지원 영역 확인 실패: ${e.message}") }
@@ -383,14 +482,17 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     }
 
     private fun restoreAmbientLight() {
+        lightRound++ // 아직 진행 중인 귀갓길 무드등 작업은 무시
         val light = vehicle.getLight()
         lightBefore.forEach { (area, before) ->
-            val (brightness, color) = before
             runCatching {
-                if (brightness != null) light.setAmbientLightBrightness(area, brightness, { _, _ -> },
-                    { e -> Log.w(TAG, "[#14] 무드등 밝기 복구 실패: ${e.message}") })
-                if (color != null) light.setAmbientLightBrightnessColor(area, color, { _, _ -> },
-                    { e -> Log.w(TAG, "[#14] 무드등 색 복구 실패: ${e.message}") })
+                before.brightness?.let { light.setAmbientLightBrightness(area, it, { _, _ -> },
+                    { e -> Log.w(TAG, "[#14] 무드등 밝기 복구 실패: ${e.message}") }) }
+                before.color?.let { light.setAmbientLightBrightnessColor(area, it, { _, _ -> },
+                    { e -> Log.w(TAG, "[#14] 무드등 색 복구 실패: ${e.message}") }) }
+                // 원래 꺼져 있었으면 다시 꺼요
+                before.switch?.let { light.setAmbientLightSwitch(area, it, { _, _ -> },
+                    { e -> Log.w(TAG, "[#14] 무드등 켜짐 복구 실패: ${e.message}") }) }
             }
         }
         lightBefore.clear()
@@ -398,6 +500,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
     /** 앱이 꺼질 때. 움직이는 시트를 멈추고 SDK 연결을 풀어요 */
     fun release() {
+        lightRound++
         if (seatTracker.isMoving) stopSeat()
         main.removeCallbacksAndMessages(null)
         vehicle.release()
@@ -406,6 +509,8 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     companion object {
         private const val TAG = "MajiControl"
         private const val READ_TIMEOUT_MS = 2000L
+        private const val STOP_RETRY = 3
+        private const val STOP_RETRY_DELAY_MS = 300L
 
 
         // 프로필에 무드등 색이 없을 때 귀갓길 기본 색 (따뜻한 주황빛, ARGB)

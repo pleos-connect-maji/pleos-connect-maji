@@ -27,6 +27,21 @@ object ControlRules {
      */
     fun isControlAvailable(caps: List<Boolean?>, allPrepareFailed: Boolean): Boolean =
         !allPrepareFailed && caps.any { it != false }
+
+    /**
+     * 열선·통풍을 Contract 약속(-3..3, 음수 = 통풍) 하나로 합쳐요.
+     * 통풍이 따로 있는 차: 열선 0 + 통풍 2 → -2. A의 PleosVehicleSignals와 같은 규칙이에요.
+     */
+    fun mergeHeatVent(heat: Int?, vent: Int?): Int? = when {
+        heat == null && vent == null -> null
+        heat != null && heat != 0 -> heat   // 열선 값이 있으면 그대로 (음수면 이미 통풍)
+        vent != null && vent > 0 -> -vent   // 통풍이 따로 켜져 있으면 음수로
+        else -> 0
+    }
+
+    /** 합친 값(-3..3)을 통풍이 따로 있는 차용으로 나눠요: (열선, 통풍) */
+    fun splitHeatVent(level: Int): Pair<Int, Int> =
+        if (level >= 0) level to 0 else 0 to -level
 }
 
 /**
@@ -42,12 +57,24 @@ class SeatMoveTracker(private val maxMs: Int = ControlRules.MAX_SEAT_MOVE_MS) {
 
     private var startedAt: Long? = null
     private var forward = true
+    private var currentToken = 0
+    private var currentManual = false
+
+    // 이미 기록한 이동 (출발이 나중에 거절되면 되돌리려고 기억해요). 출발 번호 → 기록한 시간
+    private val recorded = mutableMapOf<Int, Int>()
+
+    // ◀▶(직접 조절) 중에 움직인 시간. 문 열림·자동 정지로 먼저 멈춰도 뗄 때 한 번에 돌려줘요
+    private var manualMs = 0
 
     val isMoving: Boolean get() = startedAt != null
 
-    fun start(forward: Boolean, now: Long) {
+    /** 출발. 번호를 돌려줘요 → SDK가 나중에 "출발 거절"을 알리면 그 번호로 reject해요 */
+    fun start(forward: Boolean, now: Long, manual: Boolean = false): Int {
         this.forward = forward
         startedAt = now
+        currentManual = manual
+        if (manual) manualMs = 0
+        return ++currentToken
     }
 
     /** 멈춘 순간 호출. 이번에 움직인 시간(+앞, -뒤)을 돌려주고 합계에 더해요. 안 움직이는 중이면 0 */
@@ -57,7 +84,33 @@ class SeatMoveTracker(private val maxMs: Int = ControlRules.MAX_SEAT_MOVE_MS) {
         val elapsed = (now - started).coerceAtLeast(0).toInt()
         val moved = if (forward) elapsed else -elapsed
         offsetMs = (offsetMs + moved).coerceIn(-maxMs, maxMs)
+        recorded[currentToken] = moved
+        if (currentManual) manualMs += moved
         return moved
+    }
+
+    /**
+     * SDK가 출발을 거절했을 때. 실제로는 안 움직였으니 기록에서 빼요.
+     * - 아직 움직이는 중으로 알고 있으면: 기록 없이 멈춘 걸로
+     * - 이미 멈춰서 기록했으면: 기록한 만큼 되돌려요
+     * - 다른(지난) 출발 번호면: 그 기록만 되돌려요
+     */
+    fun reject(token: Int) {
+        if (token == currentToken && startedAt != null) {
+            startedAt = null
+            return
+        }
+        val moved = recorded.remove(token) ?: return
+        offsetMs = (offsetMs - moved).coerceIn(-maxMs, maxMs)
+        if (token == currentToken && currentManual) manualMs -= moved
+    }
+
+    /** ◀▶를 뗄 때. 이번 누름 동안 움직인 시간(+앞, -뒤)을 한 번만 돌려줘요 */
+    fun takeManualMs(): Int {
+        val ms = manualMs
+        manualMs = 0
+        currentManual = false
+        return ms
     }
 
     /** 원래 자리로 가려면 움직여야 하는 시간 (+앞, -뒤) */
