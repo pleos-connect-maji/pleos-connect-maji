@@ -314,6 +314,17 @@ class MajiFlowTest {
         assertEquals(emptyList<String>(), nav.requested)
     }
 
+    @Test
+    fun `맞이를 시작한 뒤 저장한 자리 값도 준비할 때 반영해요`() {
+        val freshRepo = FakeProfileRepository(listOf(mom))
+        val freshFlow = MajiFlowImpl(control, freshRepo, greeter, scope, month = { 12 })
+        freshFlow.start(mom)
+        // 맞이 중에 자리 설정에서 겨울 값을 저장했다고 가정
+        runBlocking { freshRepo.save(mom.copy(winter = Climate(seatHeat = 1, temperature = 15f))) }
+        freshFlow.onParkChanged(true)
+        assertEquals(Climate(seatHeat = 1, temperature = 15f), control.preparedClimate)
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
