@@ -51,18 +51,18 @@ fun progressMessage(
     return when (step) {
         MajiStep.IDLE -> "맞이를 시작하면 여기에 진행 상황이 보여요"
         MajiStep.HEADING -> "$profileName 맞이 중 · 도착하면 자리를 준비할게요"
-        MajiStep.PREPARING -> "$profileName 자리 맞추는 중…"
+        MajiStep.PREPARING -> {
+            val detail = climateDetail(climate)
+            if (detail.isEmpty()) "$profileName 자리 맞추는 중…" else "$profileName 자리 맞추는 중…\n$detail"
+        }
         MajiStep.BOARDED -> "$profileName 탑승했어요 · 편안한 귀갓길 되세요"
         MajiStep.RIDING_HOME -> "$profileName 귀갓길 중이에요"
         MajiStep.FINISHED -> "맞이가 끝났어요"
     }
 }
 
-/**
- * 대체 모드 준비 문구. 둘째 줄은 값이 있는 칸만 보여요(둘 다 없으면 첫 줄만).
- * 열선 음수 = 통풍 N단계, 0 = 열선 끔, 양수 = 열선 N단계.
- */
-private fun fallbackPreparingMessage(profileName: String, climate: Climate?): String {
+/** 준비 값 한 줄. 열선은 음수 = 통풍 N단계, 0 = 열선 끔, 양수 = 열선 N단계. 값이 없는 칸은 빼요. */
+private fun climateDetail(climate: Climate?): String {
     val heat = climate?.seatHeat?.let {
         when {
             it < 0 -> "통풍 ${-it}단계"
@@ -74,7 +74,12 @@ private fun fallbackPreparingMessage(profileName: String, climate: Climate?): St
         val text = if (celsius % 1f == 0f) celsius.toInt().toString() else celsius.toString()
         "${text}℃"
     }
-    val detail = listOfNotNull(heat, temperature).joinToString(", ")
+    return listOfNotNull(heat, temperature).joinToString(", ")
+}
+
+/** 대체 모드 준비 문구. 둘째 줄은 값이 있는 칸만 보여요(둘 다 없으면 첫 줄만). */
+private fun fallbackPreparingMessage(profileName: String, climate: Climate?): String {
+    val detail = climateDetail(climate)
     val first = "$profileName 자리는 직접 맞춰 주세요"
     return if (detail.isEmpty()) first else "$first\n$detail"
 }
