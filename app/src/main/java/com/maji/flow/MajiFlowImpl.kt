@@ -22,7 +22,9 @@ class MajiFlowImpl(
     private val greeter: Greeter,
     private val scope: CoroutineScope,  // 저장(suspend)을 부르는 곳
     private val month: () -> Int = { LocalDate.now().monthValue },
-    private val destinations: DestinationSetter? = null  // 맞이 장소 내비 목적지 (#27)
+    private val destinations: DestinationSetter? = null,  // 맞이 장소 내비 목적지 (#27)
+    private val stateStore: FlowStateStore? = null,  // 맞이 상태 저장 (#26)
+    private val now: () -> Long = { System.currentTimeMillis() }
 ) : MajiFlow, VehicleSignals.Listener {
 
     private var current = MajiStep.IDLE
@@ -115,6 +117,7 @@ class MajiFlowImpl(
             // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
             val climate = profiles.climateFor(p, profiles.seasonFor(month())) ?: Climate()
             preparedClimate = climate
+            snapshot()?.let { stateStore?.save(it) }  // 준비 값이 생긴 뒤에도 저장해요
             greeter.playNotice(Notices.PREPARE)
             control.preparePassenger(climate, p.seatMoveMs) {
                 // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
@@ -155,6 +158,23 @@ class MajiFlowImpl(
 
     private fun moveTo(next: MajiStep) {
         current = next
+        if (next == MajiStep.IDLE || next == MajiStep.FINISHED) {
+            stateStore?.clear()
+        } else {
+            snapshot()?.let { stateStore?.save(it) }
+        }
         listeners.forEach { it(next) }
+    }
+
+    // 지금 맞이 상태를 담아요. 맞이 대상이 없으면 null.
+    private fun snapshot(): FlowSnapshot? {
+        val id = currentProfile?.id ?: return null
+        return FlowSnapshot(
+            step = current,
+            profileId = id,
+            savedState = savedState,
+            preparedClimate = preparedClimate,
+            savedAtMillis = now()
+        )
     }
 }

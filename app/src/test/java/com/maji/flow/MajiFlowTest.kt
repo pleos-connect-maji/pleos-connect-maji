@@ -314,6 +314,35 @@ class MajiFlowTest {
         assertEquals(emptyList<String>(), nav.requested)
     }
 
+    // ───────────── 맞이 상태 저장 (#26) ─────────────
+
+    private class FakeFlowStateStore : FlowStateStore {
+        var snapshot: FlowSnapshot? = null
+        override fun save(snapshot: FlowSnapshot) {
+            this.snapshot = snapshot
+        }
+        override fun load(): FlowSnapshot? = snapshot
+        override fun clear() {
+            snapshot = null
+        }
+    }
+
+    @Test
+    fun `맞이 상태를 저장하고 끝나면 지워요`() {
+        val store = FakeFlowStateStore()
+        val savedFlow = MajiFlowImpl(control, repo, greeter, scope, stateStore = store, now = { 1000L }, month = { 12 })
+        savedFlow.start(mom)
+        assertEquals(MajiStep.HEADING, store.load()!!.step)
+        assertEquals(1L, store.load()!!.profileId)
+
+        savedFlow.onParkChanged(true)
+        assertEquals(Climate(seatHeat = 2, temperature = 23f), store.load()!!.preparedClimate)
+        assertEquals(1000L, store.load()!!.savedAtMillis)
+
+        savedFlow.finish()
+        assertEquals(null, store.load())
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
