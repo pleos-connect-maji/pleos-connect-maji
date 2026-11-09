@@ -69,6 +69,73 @@ class ControlRulesTest {
         assertEquals(0, t.stop(4_000))
     }
 
+    // ───────── 리뷰 반영: 출발 거절 · 직접 조절 중 끊김 ─────────
+
+    @Test
+    fun `출발이 움직이는 중에 거절되면 기록하지 않는다`() {
+        val t = SeatMoveTracker()
+        val token = t.start(true, 0)
+        t.reject(token)
+        assertFalse(t.isMoving)
+        assertEquals(0, t.stop(3_000))
+        assertEquals(0, t.offsetMs)
+    }
+
+    @Test
+    fun `이미 멈춘 뒤에 거절이 늦게 와도 그 기록만 되돌린다`() {
+        val t = SeatMoveTracker()
+        t.start(true, 0); t.stop(1_000)                 // 정상 이동 +1000
+        val late = t.start(true, 2_000); t.stop(5_000)  // +3000 기록했는데
+        t.reject(late)                                   // 나중에 "출발 거절" 도착
+        assertEquals(1_000, t.offsetMs)
+        assertEquals(-1_000, t.restorePlanMs())
+    }
+
+    @Test
+    fun `같은 거절이 두 번 와도 한 번만 되돌린다`() {
+        val t = SeatMoveTracker()
+        val token = t.start(true, 0); t.stop(2_000)
+        t.reject(token); t.reject(token)
+        assertEquals(0, t.offsetMs)
+    }
+
+    @Test
+    fun `직접 조절 중 문이 열려 먼저 멈춰도 뗄 때 움직인 시간을 돌려준다`() {
+        val t = SeatMoveTracker()
+        t.start(true, 0, manual = true)
+        t.stop(1_200)                        // 문 열림 안전 정지가 먼저
+        t.stop(2_000)                        // 손을 뗌 (이미 멈춤 → 0)
+        assertEquals(1_200, t.takeManualMs()) // 0이 아니라 1200
+        assertEquals(0, t.takeManualMs())     // 한 번만 돌려줌
+    }
+
+    @Test
+    fun `자동 준비 이동은 직접 조절 시간에 섞이지 않는다`() {
+        val t = SeatMoveTracker()
+        t.start(true, 0); t.stop(3_000)                 // 자동 준비
+        t.start(false, 5_000, manual = true); t.stop(5_500)
+        assertEquals(-500, t.takeManualMs())
+        assertEquals(2_500, t.offsetMs)                 // 복구는 둘 다 합쳐서
+    }
+
+    // ───────── 리뷰 반영: 통풍이 따로 있는 차 ─────────
+
+    @Test
+    fun `열선과 통풍을 하나의 값으로 합친다`() {
+        assertEquals(2, ControlRules.mergeHeatVent(2, 0))
+        assertEquals(-2, ControlRules.mergeHeatVent(0, 2))   // 통풍 2 → -2
+        assertEquals(-3, ControlRules.mergeHeatVent(-3, null)) // 열선 값에 이미 통풍이 들어 있는 차
+        assertEquals(0, ControlRules.mergeHeatVent(0, 0))
+        assertEquals(null, ControlRules.mergeHeatVent(null, null))
+    }
+
+    @Test
+    fun `합친 값을 열선과 통풍으로 나눈다`() {
+        assertEquals(2 to 0, ControlRules.splitHeatVent(2))
+        assertEquals(0 to 2, ControlRules.splitHeatVent(-2))
+        assertEquals(0 to 0, ControlRules.splitHeatVent(0))
+    }
+
     // ───────── 값 범위 (#10, #46) ─────────
 
     @Test
