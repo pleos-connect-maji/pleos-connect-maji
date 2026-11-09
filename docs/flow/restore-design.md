@@ -98,3 +98,51 @@
 - 복원 기간: 며칠까지 복원할지
 - 백그라운드: 플랫폼 정책 확인 결과에 따라 포그라운드 서비스 여부
 - 복원 후 현재 차 상태와 저장 상태가 다르면 어느 쪽을 믿을지 (초안: 현재 상태 우선)
+
+## 8. Room 테이블 설계 (저장 방식 결정: Room)
+
+> 프로젝트는 이미 Room을 쓰고 있어요(탑승자 저장, `ProfileDatabase`). 새 라이브러리 없이 맞이 상태만 저장해요.
+
+### 8.1 DB 파일을 어디에 둘지 (중요)
+- 기존 `maji-profile.db`는 `fallbackToDestructiveMigration()`을 써요.
+  **같은 DB에 표를 추가하면서 버전을 올리면 탑승자 데이터가 전부 지워져요.**
+- 그래서 **맞이 상태는 별도 DB 파일(`maji-flow.db`)로 나눠요.** 버전을 올려도 탑승자 데이터는 안전해요.
+- 대안: 같은 DB에 넣고 `Migration(1, 2)`을 직접 만들면 가능하지만, 실수하면 데이터가 지워지므로 추천하지 않아요.
+
+### 8.2 표 구조: `flow_snapshot` (한 줄만 씀)
+| 칸 | 타입 | 뜻 |
+|---|---|---|
+| `id` | Int (고정 1) | 맞이는 하나만 있으므로 항상 1번 줄만 써요 |
+| `step` | String | 단계 이름 (`MajiStep.name`) |
+| `profileId` | Long | 탑승자 id |
+| `savedSet` | Boolean | 바꾸기 전 상태를 읽었는지 (null과 구분) |
+| `savedSeatHeat` | Int? | 바꾸기 전 열선 |
+| `savedTemp` | Float? | 바꾸기 전 온도 |
+| `savedWindow` | Int? | 바꾸기 전 창문 |
+| `preparedSet` | Boolean | 준비 값이 생겼는지 (아직 준비 전과 구분) |
+| `preparedSeatHeat` | Int? | 준비 때 보낸 열선 (학습 기준) |
+| `preparedTemp` | Float? | 준비 때 보낸 온도 (학습 기준) |
+| `savedAtMillis` | Long | 저장 시각 (복원 기간 판단) |
+
+- `Boolean` 칸을 둔 이유: `profiles` 표와 같은 방식이에요. "값이 없음(null)"과 "준비하지 않음"을 구분하기 위해서예요.
+- **학습 후보(탑승 중 바뀐 열선·온도)는 넣지 않아요.** 팀 결정 6번(허용 여부)에 따라 나중에 추가할 수 있어요.
+
+### 8.3 DAO와 저장소 (흐름 쪽)
+- `FlowSnapshotDao`
+  - `upsert(entity)`: 한 줄을 넣거나 바꿔요 (`@Insert(onConflict = REPLACE)`)
+  - `get()`: 1번 줄을 읽어요 (없으면 null)
+  - `clear()`: 1번 줄을 지워요
+- `RoomFlowStateStore : FlowStateStore`
+  - 흐름의 `save/clear`는 동기 함수라서, 실제 쓰기는 흐름의 `scope`에서 비동기로 해요.
+  - 앱을 켤 때 `get()`을 한 번 읽어서 복원을 시도해요(복원 규칙은 3번 그대로).
+
+### 8.4 버전과 마이그레이션
+- 새 DB(`maji-flow.db`)는 **version = 1**로 시작해요. 이후 칸을 바꿀 때만 올리고, 그때는 Migration을 직접 써요(이 DB에는 탑승자 데이터가 없어서 destructive 방식도 허용 가능하지만, 복원 대상인 맞이 상태만 지워져요).
+- `exportSchema = false`는 기존 DB와 맞춰요.
+
+### 8.5 복원 기간 확인
+- 읽은 뒤 `now - savedAtMillis`가 복원 기간(임시 하루)을 넘으면 버리고 `clear()` 해요.
+
+### 8.6 팀 결정에 따라 남은 것
+- 6번(학습 값 허용 여부): 허용 안 하면 지금 설계 그대로. 허용하면 `learnedHeat`, `learnedTemp` 칸을 추가해요.
+- 백그라운드(5번): Room 설계와는 별개예요.
