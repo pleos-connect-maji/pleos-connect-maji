@@ -3,83 +3,166 @@ package com.maji
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.maji.contract.MajiStep
+import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
+import com.maji.control.PleosVehicleControl
+import com.maji.flow.MajiFlowImpl
 import com.maji.profile.RoomProfileRepository
 import com.maji.signal.PleosVehicleSignals
 import com.maji.ui.ProfileEditRoute
 import com.maji.ui.ProfileListRoute
+import com.maji.ui.ProgressRoute
+import com.maji.ui.StartRoute
+import com.maji.voice.PleosGreeter
 
-// 앱 첫 화면. 지금은 탑승자 관리 화면(#39)만 연결해요. 시작 화면과 진행 화면은 흐름(B·E) 머지 후에 붙여요.
+// 앱 첫 화면. 시작 화면(흐름 시작), 탑승자 관리 화면(#39)을 연결해요.
+// 진행 화면(#56)과 자리 설정 화면(#46)은 머지 뒤에 붙여요.
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ProfileApp()
+                    MajiApp()
                 }
             }
         }
     }
 }
 
-// 화면 전환 상태. 목록 → 새로 만들기 / 수정 → 목록
-private sealed class ProfileScreen {
-    object List : ProfileScreen()
-    object Add : ProfileScreen()
-    data class Edit(val id: Long) : ProfileScreen()
+// 화면 전환 상태
+private sealed class AppScreen {
+    object Home : AppScreen()
+    object ProfileList : AppScreen()
+    object ProfileAdd : AppScreen()
+    data class ProfileEdit(val id: Long) : AppScreen()
 }
 
 @Composable
-private fun ProfileApp() {
+private fun MajiApp() {
     val context = LocalContext.current.applicationContext
-    val repo = remember { RoomProfileRepository.create(context) }
 
-    // 주행 중 여부는 A의 신호로 받아요. 앱이 보이는 동안만 구독해요.
-    var drivingRestricted by remember { mutableStateOf(false) }
+    // 차 제어 인스턴스는 하나만 만들어서 흐름과 다른 화면이 같이 써요 (시트 기록이 하나로 유지돼요)
+    val repo = remember { RoomProfileRepository.create(context) }
+    val control = remember { PleosVehicleControl(context) }
+    val greeter = remember { PleosGreeter.create(context) }
+    val scope = rememberCoroutineScope()  // 흐름이 저장을 백그라운드에서 해요 (오늘만의 인사 비우기)
+    val flow = remember { MajiFlowImpl(control, repo, greeter, scope) }
     val signals = remember { PleosVehicleSignals(context) }
-    DisposableEffect(signals) {
-        signals.start(object : VehicleSignals.Listener {
+
+    var drivingRestricted by remember { mutableStateOf(false) }
+    var step by remember { mutableStateOf(flow.step) }
+    var screen by remember { mutableStateOf<AppScreen>(AppScreen.Home) }
+
+    // 앱이 보이는 동안만 신호를 받고, 나갈 때 멈추고 제어를 풀어요.
+    // 신호는 흐름에 그대로 넘기고, 주행 상태만 화면에도 따로 넘겨요.
+    DisposableEffect(Unit) {
+        flow.addListener { step = it }
+        signals.start(object : VehicleSignals.Listener by flow {
             override fun onDrivingRestrictionChanged(isRestricted: Boolean) {
                 drivingRestricted = isRestricted
             }
         })
-        onDispose { signals.stop() }
+        onDispose {
+            signals.stop()
+            control.release()
+        }
     }
 
-    var screen by remember { mutableStateOf<ProfileScreen>(ProfileScreen.List) }
-    val backToList = { screen = ProfileScreen.List }
-
     when (val current = screen) {
-        ProfileScreen.List -> ProfileListRoute(
+        AppScreen.Home -> HomeScreen(
+            repo = repo,
+            flow = flow,
+            control = control,
+            step = step,
+            drivingRestricted = drivingRestricted,
+            onManageProfiles = { screen = AppScreen.ProfileList }
+        )
+        AppScreen.ProfileList -> ProfileListRoute(
             repo = repo,
             drivingRestricted = drivingRestricted,
-            onAdd = { screen = ProfileScreen.Add },
-            onEdit = { screen = ProfileScreen.Edit(it) },
-            onBack = {}  // 첫 화면이라 돌아갈 곳이 없어요
+            onAdd = { screen = AppScreen.ProfileAdd },
+            onEdit = { screen = AppScreen.ProfileEdit(it) },
+            onBack = { screen = AppScreen.Home }
         )
-        ProfileScreen.Add -> ProfileEditRoute(
+        AppScreen.ProfileAdd -> ProfileEditRoute(
             repo = repo,
             profileId = null,
             drivingRestricted = drivingRestricted,
-            onDone = backToList
+            onDone = { screen = AppScreen.ProfileList }
         )
-        is ProfileScreen.Edit -> ProfileEditRoute(
+        is AppScreen.ProfileEdit -> ProfileEditRoute(
             repo = repo,
             profileId = current.id,
             drivingRestricted = drivingRestricted,
-            onDone = backToList
+            onDone = { screen = AppScreen.ProfileList }
         )
+    }
+}
+
+@Composable
+private fun HomeScreen(
+    repo: RoomProfileRepository,
+    flow: MajiFlowImpl,
+    control: VehicleControl,
+    step: MajiStep,
+    drivingRestricted: Boolean,
+    onManageProfiles: () -> Unit
+) {
+    val active = step != MajiStep.IDLE && step != MajiStep.FINISHED
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            OutlinedButton(onClick = onManageProfiles, enabled = !drivingRestricted) { Text("탑승자 관리") }
+        }
+
+        // 맞이가 시작되면 진행 화면(#56)을 위에 보여 줘요. 제어가 막힌 차면 대체 모드 문구를 써요.
+        if (active) {
+            Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+                ProgressRoute(
+                    flow = flow,
+                    profiles = repo,
+                    drivingRestricted = drivingRestricted,
+                    controlAvailable = control.isControlAvailable()
+                )
+            }
+        }
+
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            StartRoute(
+                profiles = repo,
+                flow = flow,
+                drivingRestricted = drivingRestricted
+            )
+        }
     }
 }
