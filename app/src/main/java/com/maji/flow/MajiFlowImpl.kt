@@ -9,6 +9,7 @@ import com.maji.contract.Profile
 import com.maji.contract.ProfileRepository
 import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
+import com.maji.voice.Notices
 import java.time.LocalDate
 
 // C. 맞이 흐름 (#22). 차 신호(A)를 받아 단계를 넘기고, 단계마다 B·D·E 함수를 불러요.
@@ -93,8 +94,11 @@ class MajiFlowImpl(
             savedState = state.copy(temperature = state.temperature ?: lastTemperature)
             // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
             val climate = profiles.climateFor(p, profiles.seasonFor(month())) ?: Climate()
-            greeter.playNotice(PREPARE_NOTICE)
-            control.preparePassenger(climate, p.seatMoveMs)
+            greeter.playNotice(Notices.PREPARE)
+            control.preparePassenger(climate, p.seatMoveMs) {
+                // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
+                if (current == MajiStep.PREPARING) greeter.playNotice(Notices.PREPARE_DONE)
+            }
         }
     }
 
@@ -110,10 +114,5 @@ class MajiFlowImpl(
     private fun moveTo(next: MajiStep) {
         current = next
         listeners.forEach { it(next) }
-    }
-
-    companion object {
-        // 자리 맞출게요 안내음 파일 (E 담당 파일 이름에 맞춰 바꿔야 해요)
-        private const val PREPARE_NOTICE = "audio/prepare_notice.mp3"
     }
 }
