@@ -9,6 +9,7 @@ import com.maji.contract.Profile
 import com.maji.contract.ProfileRepository
 import com.maji.contract.VehicleControl
 import com.maji.contract.VehicleSignals
+import com.maji.voice.Notices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -28,7 +29,6 @@ class MajiFlowImpl(
     private val listeners = mutableListOf<(MajiStep) -> Unit>()
 
     private var isPark = false
-    private var isBrakeOn = false
     private var lastTemperature: Float? = null  // 에뮬레이터에서 못 읽는 원래 온도 대신 쓸 값 (A가 알려줌)
     private var savedState: PassengerState? = null  // 바꾸기 전 조수석 상태, 하차 때 되돌려요
 
@@ -48,7 +48,6 @@ class MajiFlowImpl(
         if (current != MajiStep.IDLE && current != MajiStep.FINISHED) return  // 맞이 중이면 무시
         currentProfile = profile
         isPark = false
-        isBrakeOn = false
         savedState = null
         preparedClimate = null
         changedHeat = null
@@ -73,11 +72,6 @@ class MajiFlowImpl(
         checkReadyToPrepare()
     }
 
-    override fun onParkingBrakeChanged(isOn: Boolean) {
-        isBrakeOn = isOn
-        checkReadyToPrepare()
-    }
-
     override fun onPassengerDoorChanged(isOpen: Boolean) {
         if (!isOpen || current != MajiStep.PREPARING) return  // 중간 하차는 #25에서 다뤄요
         val p = currentProfile ?: return
@@ -92,13 +86,13 @@ class MajiFlowImpl(
     override fun onPassengerHeatChanged(level: Int) {
         // 준비 중에 우리가 맞춘 값은 탑승자가 바꾼 게 아니고, 맞춘 값이 없으면 기준이 없어서 기록하지 않아요
         val prepared = preparedClimate?.seatHeat ?: return
-        if (isPassengerSeated() && level != prepared) changedHeat = level
+        if (isPassengerSeated()) changedHeat = if (level != prepared) level else null  // 준비 값으로 되돌리면 기록을 지워요
     }
 
     override fun onPassengerTemperatureChanged(celsius: Float) {
         lastTemperature = celsius
         val prepared = preparedClimate?.temperature ?: return
-        if (isPassengerSeated() && celsius != prepared) changedTemperature = celsius
+        if (isPassengerSeated()) changedTemperature = if (celsius != prepared) celsius else null
     }
 
     // ───────────── 내부 ─────────────
@@ -107,9 +101,9 @@ class MajiFlowImpl(
     private fun isPassengerSeated(): Boolean =
         current == MajiStep.BOARDED || current == MajiStep.RIDING_HOME
 
-    // P단 + 주차 브레이크가 둘 다 켜지면 자리 준비 시작
+    // P단에 들어가면 자리 준비 시작. 주차 브레이크 신호는 A가 보내지 않아서 쓰지 않아요.
     private fun checkReadyToPrepare() {
-        if (current != MajiStep.HEADING || !isPark || !isBrakeOn) return
+        if (current != MajiStep.HEADING || !isPark) return
         val p = currentProfile ?: return
         moveTo(MajiStep.PREPARING)
 
@@ -119,8 +113,11 @@ class MajiFlowImpl(
             // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
             val climate = profiles.climateFor(p, profiles.seasonFor(month())) ?: Climate()
             preparedClimate = climate
-            greeter.playNotice(PREPARE_NOTICE)
-            control.preparePassenger(climate, p.seatMoveMs)
+            greeter.playNotice(Notices.PREPARE)
+            control.preparePassenger(climate, p.seatMoveMs) {
+                // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
+                if (current == MajiStep.PREPARING) greeter.playNotice(Notices.PREPARE_DONE)
+            }
         }
     }
 
@@ -156,10 +153,5 @@ class MajiFlowImpl(
     private fun moveTo(next: MajiStep) {
         current = next
         listeners.forEach { it(next) }
-    }
-
-    companion object {
-        // 자리 맞출게요 안내음 파일 (E 담당 파일 이름에 맞춰 바꿔야 해요)
-        private const val PREPARE_NOTICE = "audio/prepare_notice.mp3"
     }
 }

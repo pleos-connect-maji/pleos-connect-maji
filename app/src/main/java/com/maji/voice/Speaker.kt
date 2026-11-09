@@ -21,11 +21,14 @@ interface Speaker {
 // 음성 파일 재생. 진짜는 MediaAudioPlayer, 테스트에서는 가짜.
 // 콜백은 메인 스레드에서 불러야 해요.
 interface AudioPlayer {
-    /** source: assets 경로("audio/x.mp3"), 파일 경로("/sdcard/..."), 또는 "content://", "file://" 주소 */
+    /** source: assets 경로("audio/x.mp3"), 파일 경로("/sdcard/..."), 또는 "content://", "file://", "http(s)://" 주소 */
     fun play(source: String, onDone: () -> Unit, onError: (String) -> Unit)
 
     /** 멈춘 뒤에는 콜백을 부르지 않아요 */
     fun stop()
+
+    /** 볼륨 0.0..1.0 (재생 중일 때만 의미 있어요) */
+    fun setVolume(volume: Float) {}
 }
 
 // 시간 제한용. 테스트에서는 시간을 직접 넘겨요.

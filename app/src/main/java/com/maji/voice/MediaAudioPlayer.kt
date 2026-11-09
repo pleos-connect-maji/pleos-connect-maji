@@ -18,17 +18,28 @@ class MediaAudioPlayer(
 
     private val appContext = context.applicationContext
     private var player: MediaPlayer? = null
+    private var prepared = false
+    private var volume = 1f // 준비 중에는 볼륨을 못 바꿔서 기억해 뒀다가 준비되면 적용해요
 
     override fun play(source: String, onDone: () -> Unit, onError: (String) -> Unit) {
         stop()
         val mp = MediaPlayer()
         player = mp
+        prepared = false
+        volume = 1f
         try {
             mp.setAudioAttributes(
                 AudioAttributes.Builder().setUsage(usage).setContentType(contentType).build()
             )
             setSource(mp, source)
-            mp.setOnPreparedListener { if (player === mp) mp.start() }
+            mp.isLooping = false // 한 번만 재생 (#16)
+            mp.setOnPreparedListener {
+                if (player === mp) {
+                    prepared = true
+                    mp.setVolume(volume, volume)
+                    mp.start()
+                }
+            }
             mp.setOnCompletionListener {
                 if (player === mp) {
                     releasePlayer()
@@ -54,9 +65,20 @@ class MediaAudioPlayer(
         releasePlayer()
     }
 
+    override fun setVolume(volume: Float) {
+        this.volume = volume.coerceIn(0f, 1f)
+        val mp = player ?: return
+        if (!prepared) return
+        try {
+            mp.setVolume(this.volume, this.volume)
+        } catch (_: IllegalStateException) {
+        }
+    }
+
     private fun setSource(mp: MediaPlayer, source: String) {
         when {
-            source.startsWith("content://") || source.startsWith("file://") ->
+            source.startsWith("content://") || source.startsWith("file://") ||
+                source.startsWith("http://") || source.startsWith("https://") ->
                 mp.setDataSource(appContext, Uri.parse(source))
             source.startsWith("/") -> mp.setDataSource(source)
             else -> appContext.assets.openFd(source).use { fd ->
@@ -68,6 +90,7 @@ class MediaAudioPlayer(
     private fun releasePlayer() {
         val mp = player ?: return
         player = null
+        prepared = false
         try {
             mp.reset()
         } catch (_: Exception) {

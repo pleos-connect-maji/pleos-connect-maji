@@ -10,11 +10,15 @@ class PleosGreeterTest {
 
     private val speaker = FakeSpeaker()
     private val player = FakePlayer()
+    private val song = FakePlayer()
     private val clock = FakeScheduler()
+    private val focus = FakeFocus()
     private val greeter = PleosGreeter(
         speaker = speaker,
         player = player,
+        songPlayer = song,
         scheduler = clock,
+        focus = focus,
         defaultGreetings = listOf("오늘도 고생 많았어요"),
         startTimeoutMs = 3_000,
         maxSpeakMs = 15_000
@@ -117,7 +121,7 @@ class PleosGreeterTest {
 
     @Test
     fun 읽을_문장이_없으면_바로_파일() {
-        val silent = PleosGreeter(speaker, player, clock, defaultGreetings = emptyList())
+        val silent = PleosGreeter(speaker, player, song, clock, focus, defaultGreetings = emptyList())
         silent.playGreeting(Profile(name = "아빠"), onDone)
         assertEquals(null, speaker.lastText)
         assertEquals(listOf(GreetingRules.DEFAULT_GREETING_AUDIO), player.played)
@@ -225,6 +229,178 @@ class PleosGreeterTest {
         assertEquals(1, doneCount)
     }
 
+    // ───────────── #16 노래 ─────────────
+
+    private val withSong = mom.copy(songUri = "content://media/song/1")
+
+    @Test
+    fun songUri가_없거나_비면_건너뜀() {
+        greeter.playSong(mom)
+        greeter.playSong(mom.copy(songUri = "  "))
+        assertTrue(song.played.isEmpty())
+    }
+
+    @Test
+    fun 노래는_음악_플레이어로_한_번_재생() {
+        greeter.playSong(withSong)
+        assertEquals(listOf("content://media/song/1"), song.played)
+        assertTrue(player.played.isEmpty()) // 인사·안내음 플레이어는 안 씀
+        song.complete()
+        assertEquals(1, song.played.size) // 끝나도 다시 틀지 않음
+    }
+
+    @Test
+    fun 인사가_끝나고_노래_흐름() {
+        // C가 하는 그대로: 인사 onDone에서 노래
+        greeter.playGreeting(withSong) { greeter.playSong(withSong) }
+        speaker.start()
+        speaker.done()
+        assertEquals(listOf("content://media/song/1"), song.played)
+    }
+
+    @Test
+    fun 노래_중에_또_부르면_새_노래로() {
+        greeter.playSong(withSong)
+        greeter.playSong(withSong.copy(songUri = "audio/b.mp3"))
+        assertEquals(listOf("content://media/song/1", "audio/b.mp3"), song.played)
+    }
+
+    @Test
+    fun 노래_중에_인사가_오면_노래는_멈춤() {
+        greeter.playSong(withSong)
+        val before = song.stopCount
+        greeter.playGreeting(mom, onDone)
+        assertTrue(song.stopCount > before)
+    }
+
+    @Test
+    fun 노래_중_안내음은_노래를_멈추지_않음() {
+        greeter.playSong(withSong)
+        val before = song.stopCount
+        greeter.playNotice(Notices.PREPARE)
+        assertEquals(before, song.stopCount)
+    }
+
+    @Test
+    fun stopAll하면_노래도_멈춤() {
+        greeter.playSong(withSong)
+        val before = song.stopCount
+        greeter.stopAll()
+        assertTrue(song.stopCount > before)
+    }
+
+    @Test
+    fun 노래가_실패해도_예외_없이_인사는_정상() {
+        greeter.playSong(withSong)
+        song.fail()
+        greeter.playGreeting(mom, onDone)
+        speaker.start()
+        speaker.done()
+        assertEquals(1, doneCount)
+    }
+
+    // ───────────── #17 오디오 포커스 ─────────────
+
+    @Test
+    fun 인사_시작에_포커스를_잡고_TTS가_끝나면_반환() {
+        greeter.playGreeting(mom, onDone)
+        assertTrue(focus.speechHeld)
+        speaker.start()
+        speaker.done()
+        assertTrue(!focus.speechHeld)
+        assertEquals(1, focus.speechRequests)
+    }
+
+    @Test
+    fun 대체_파일로_끝나도_시간_초과여도_포커스_반환() {
+        greeter.playGreeting(mom, onDone)
+        clock.advance(3_000) // 시작 안 함 → 파일
+        assertTrue(focus.speechHeld) // 파일 재생 중에는 계속 잡고 있음
+        player.complete()
+        assertTrue(!focus.speechHeld)
+
+        greeter.playGreeting(mom, onDone)
+        speaker.start()
+        clock.advance(15_000) // 끝 신호 없음
+        assertTrue(!focus.speechHeld)
+    }
+
+    @Test
+    fun 파일까지_실패해도_포커스_반환() {
+        greeter.playGreeting(mom, onDone)
+        speaker.error("UNKNOWN")
+        player.fail()
+        assertTrue(!focus.speechHeld)
+        assertEquals(1, doneCount)
+    }
+
+    @Test
+    fun stopAll하면_인사_노래_포커스_모두_반환() {
+        greeter.playSong(mom.copy(songUri = "audio/a.mp3"))
+        assertTrue(focus.songHeld)
+        greeter.playNotice(Notices.PREPARE)
+        assertTrue(focus.speechHeld)
+        greeter.stopAll()
+        assertTrue(!focus.speechHeld)
+        assertTrue(!focus.songHeld)
+    }
+
+    @Test
+    fun 포커스가_거절돼도_인사는_재생() {
+        focus.grant = false
+        greeter.playGreeting(mom, onDone)
+        assertEquals("다녀오셨어요", speaker.lastText)
+        speaker.start()
+        speaker.done()
+        assertEquals(1, doneCount)
+    }
+
+    @Test
+    fun 안내음으로_바뀌어도_포커스는_한_번만_잡힌_상태() {
+        greeter.playNotice(Notices.PREPARE)
+        greeter.playNotice(Notices.PREPARE_DONE)
+        assertTrue(focus.speechHeld)
+        assertEquals(focus.speechRequests - 1, focus.speechAbandons)
+    }
+
+    @Test
+    fun 노래는_포커스를_잡고_끝나면_반환() {
+        greeter.playSong(mom.copy(songUri = "audio/a.mp3"))
+        assertTrue(focus.songHeld)
+        song.complete()
+        assertTrue(!focus.songHeld)
+    }
+
+    @Test
+    fun 노래_포커스를_뺏기면_노래를_멈춤() {
+        greeter.playSong(mom.copy(songUri = "audio/a.mp3"))
+        val before = song.stopCount
+        focus.loseSong()
+        assertTrue(song.stopCount > before)
+        assertTrue(!focus.songHeld)
+    }
+
+    @Test
+    fun 노래_중_안내음이면_노래_볼륨을_낮췄다가_되돌림() {
+        greeter.playSong(mom.copy(songUri = "audio/a.mp3"))
+        greeter.playNotice(Notices.PREPARE)
+        assertEquals(PleosGreeter.DUCK_VOLUME, song.volume)
+        speaker.start()
+        speaker.done()
+        assertEquals(1f, song.volume)
+        assertTrue(focus.songHeld) // 노래는 계속
+    }
+
+    @Test
+    fun 안내음_중에_시작한_노래는_처음부터_낮게() {
+        greeter.playNotice(Notices.PREPARE)
+        greeter.playSong(mom.copy(songUri = "audio/a.mp3"))
+        assertEquals(PleosGreeter.DUCK_VOLUME, song.volume)
+        speaker.start()
+        speaker.done()
+        assertEquals(1f, song.volume)
+    }
+
     // ───────────── 가짜들 ─────────────
 
     private class FakeSpeaker : Speaker {
@@ -263,10 +439,45 @@ class PleosGreeterTest {
             this.onDone = onDone
             this.onError = onError
         }
+        var volume = 1f
+            private set
         override fun stop() { stopCount++ }
+        override fun setVolume(volume: Float) { this.volume = volume }
 
         fun complete() = onDone?.invoke()
         fun fail() = onError?.invoke("가짜 실패")
+    }
+
+    private class FakeFocus : AudioFocus {
+        var grant = true
+        var speechHeld = false
+        var songHeld = false
+        var speechRequests = 0
+        var speechAbandons = 0
+        private var onLost: (() -> Unit)? = null
+
+        override fun requestSpeech(): Boolean {
+            speechRequests++
+            speechHeld = grant
+            return grant
+        }
+        override fun abandonSpeech() {
+            if (speechHeld) speechAbandons++
+            speechHeld = false
+        }
+        override fun requestSong(onLost: () -> Unit): Boolean {
+            this.onLost = onLost
+            songHeld = grant
+            return grant
+        }
+        override fun abandonSong() {
+            songHeld = false
+            onLost = null
+        }
+        fun loseSong() {
+            songHeld = false
+            onLost?.invoke()
+        }
     }
 
     private class FakeScheduler : Scheduler {
