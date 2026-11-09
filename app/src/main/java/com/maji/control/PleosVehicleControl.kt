@@ -354,10 +354,10 @@ class PleosVehicleControl(context: Context) : VehicleControl {
                                 main.post { lightBefore.putIfAbsent(area, oldB to oldC) }
                                 runCatching { light.setAmbientLightSwitch(area, LightSwitch.ON, { _, _ -> }, { }) }
                                 light.setAmbientLightBrightness(area, value,
-                                    { a, v -> Log.d(TAG, "[#12] 무드등 밝기 ${a.values} → $v") },
+                                    { a, v -> Log.d(TAG, "[#12] 무드등 밝기 ${a.values.joinToString()} → $v") },
                                     { e -> Log.w(TAG, "[#12] 무드등 밝기 실패: ${e.message}") })
                                 light.setAmbientLightBrightnessColor(area, argb,
-                                    { a, v -> Log.d(TAG, "[#12] 무드등 색 ${a.values} → ${Integer.toHexString(v)}") },
+                                    { a, v -> Log.d(TAG, "[#12] 무드등 색 ${a.values.joinToString()} → ${Integer.toHexString(v)}") },
                                     { e -> Log.w(TAG, "[#12] 무드등 색 실패: ${e.message}") })
                             }, { e -> Log.w(TAG, "[#12] 무드등 원래 색 읽기 실패: ${e.message}") })
                         }, { e -> Log.w(TAG, "[#12] 무드등 원래 밝기 읽기 실패: ${e.message}") })
