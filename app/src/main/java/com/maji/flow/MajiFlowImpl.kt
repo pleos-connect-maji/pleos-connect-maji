@@ -107,18 +107,24 @@ class MajiFlowImpl(
     private fun checkReadyToPrepare() {
         if (current != MajiStep.HEADING || !isPark) return
         val p = currentProfile ?: return
-        moveTo(MajiStep.PREPARING)
+        scope.launch {
+            // 맞이를 시작한 뒤에 저장된 값(자리 설정 등)도 반영하도록, 준비 직전에 탑승자 정보를 다시 읽어요
+            val fresh = profiles.get(p.id) ?: p
+            if (current != MajiStep.HEADING) return@launch
+            currentProfile = fresh
+            moveTo(MajiStep.PREPARING)
 
-        // 준비 전에 원래 상태를 먼저 읽어 둬야 나중에 되돌릴 수 있어요
-        control.readPassengerState { state ->
-            savedState = state.copy(temperature = state.temperature ?: lastTemperature)
-            // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
-            val climate = profiles.climateFor(p, profiles.seasonFor(month())) ?: Climate()
-            preparedClimate = climate
-            greeter.playNotice(Notices.PREPARE)
-            control.preparePassenger(climate, p.seatMoveMs) {
-                // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
-                if (current == MajiStep.PREPARING) greeter.playNotice(Notices.PREPARE_DONE)
+            // 준비 전에 원래 상태를 먼저 읽어 둬야 나중에 되돌릴 수 있어요
+            control.readPassengerState { state ->
+                savedState = state.copy(temperature = state.temperature ?: lastTemperature)
+                // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
+                val climate = profiles.climateFor(fresh, profiles.seasonFor(month())) ?: Climate()
+                preparedClimate = climate
+                greeter.playNotice(Notices.PREPARE)
+                control.preparePassenger(climate, fresh.seatMoveMs) {
+                    // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
+                    if (current == MajiStep.PREPARING) greeter.playNotice(Notices.PREPARE_DONE)
+                }
             }
         }
     }
