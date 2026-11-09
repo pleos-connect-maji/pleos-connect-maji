@@ -94,12 +94,14 @@ class MajiFlowImpl(
         // 준비 중에 우리가 맞춘 값은 탑승자가 바꾼 게 아니고, 맞춘 값이 없으면 기준이 없어서 기록하지 않아요
         val prepared = preparedClimate?.seatHeat ?: return
         if (isPassengerSeated()) changedHeat = if (level != prepared) level else null  // 준비 값으로 되돌리면 기록을 지워요
+        persist()  // 학습 값을 저장해요 (#26)
     }
 
     override fun onPassengerTemperatureChanged(celsius: Float) {
         lastTemperature = celsius
         val prepared = preparedClimate?.temperature ?: return
         if (isPassengerSeated()) changedTemperature = if (celsius != prepared) celsius else null
+        persist()  // 학습 값을 저장해요 (#26)
     }
 
     // ───────────── 내부 ─────────────
@@ -181,7 +183,9 @@ class MajiFlowImpl(
             season = season,
             savedState = savedState,
             preparedClimate = preparedClimate,
-            savedAtMillis = now()
+            savedAtMillis = now(),
+            learnedHeat = changedHeat,
+            learnedTemp = changedTemperature
         )
         scope.launch { stateStore?.save(snapshot) }
     }
@@ -206,6 +210,8 @@ class MajiFlowImpl(
         currentSeason = snapshot.season
         savedState = snapshot.savedState
         preparedClimate = snapshot.preparedClimate
+        changedHeat = snapshot.learnedHeat  // 저장된 학습 값을 이어받아요 (#26)
+        changedTemperature = snapshot.learnedTemp
         // 저장 기록을 다시 쓰지 않도록, 단계만 바꾸고 알려 줘요
         current = snapshot.step
         listeners.forEach { it(snapshot.step) }

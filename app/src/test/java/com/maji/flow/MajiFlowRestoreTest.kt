@@ -129,4 +129,25 @@ class MajiFlowRestoreTest {
         assertEquals(saved, control.restored)
         assertEquals(MajiStep.FINISHED, flow.step)
     }
+
+    @Test
+    fun `탑승 중 바뀐 열선을 저장하고, 되살린 뒤 끝내면 그 계절에 쌓여요`() = runBlocking {
+        val repo = FakeProfileRepository(listOf(mom))
+        val store = FakeStore()
+        val control = FakeControl()
+        val first = flowWith(store, repo, control, FakeGreeter())
+        first.start(mom)
+        first.onParkChanged(true)
+        first.onParkingBrakeChanged(true)
+        first.onPassengerDoorChanged(true)
+        first.onPassengerHeatChanged(1)  // 탑승자가 1단으로 바꿈
+        assertEquals(1, store.snapshot!!.learnedHeat)
+
+        // 앱을 껐다가 다시 켠 상황을 흉내 내요
+        val second = flowWith(store, repo, control, FakeGreeter())
+        assertTrue(second.restoreSavedIfFresh())
+        second.finish()
+
+        assertEquals(1, repo.get(1)!!.winter!!.seatHeat)
+    }
 }
