@@ -14,6 +14,7 @@ import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.vehicle.listener.HvacSeatTemperatureListener
 import ai.pleos.playground.vehicle.listener.HvacSeatVentilationListener
 import ai.pleos.playground.vehicle.listener.HvacTemperatureListener
+import ai.pleos.playground.vehicle.constant.unit.TemperatureUnit
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -289,9 +290,39 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
     private fun subscribeClimate() {
         try {
             val seat = vehicle.getSeat()
+            val hvac = vehicle.getHVAC()
+
+            // 1) 지금 값을 한 번 읽어서 처음 상태 알려주기 (재시작 뒤 복구용 #26)
+            seat.getHvacSeatTemperature(
+                area = passengerSeat,
+                onComplete = { current ->
+                    Log.d(TAG, "현재 열선: $current")
+                    mainHandler.post { rawSeatHeat = current; updateHeat() }
+                },
+                onFailed = { e -> Log.w(TAG, "현재 열선 읽기 실패: ${e.message}") }
+            )
+            seat.getHvacSeatVentilationState(
+                area = passengerSeat,
+                onComplete = { current ->
+                    Log.d(TAG, "현재 통풍: $current")
+                    mainHandler.post { rawSeatVent = current; updateHeat() }
+                },
+                onFailed = { e -> Log.w(TAG, "현재 통풍 읽기 실패: ${e.message}") }
+            )
+            hvac.getHvacTemperature(
+                area = passengerSeat,
+                unit = TemperatureUnit.CELSIUS,
+                onComplete = { current ->
+                    Log.d(TAG, "현재 온도: $current")
+                    updateTemperature(current)
+                },
+                onFailed = { e -> Log.w(TAG, "현재 온도 읽기 실패: ${e.message}") }
+            )
+
+            // 2) 앞으로 바뀔 때마다 알려달라고 등록
             seat.registerHvacSeatTemperature(passengerSeat, seatHeatListener)
             seat.registerHvacSeatVentilation(passengerSeat, seatVentListener)
-            vehicle.getHVAC().registerHvacTemperature(passengerSeat, temperatureListener)
+            hvac.registerHvacTemperature(passengerSeat, temperatureListener)
         } catch (e: Exception) {
             Log.w(TAG, "열선·온도 등록 중 오류: ${e.message}")
             retryClimate()
@@ -334,8 +365,13 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
     }
 
     // 온도는 숫자 그대로, 바뀌었을 때만 알려주기
+    // 에뮬레이터는 가끔 범위 밖(예: 0.0) 엉터리 값을 주는데, 그건 무시해요
     private fun updateTemperature(celsius: Float?) {
         if (celsius == null) return
+        if (celsius < TEMP_MIN || celsius > TEMP_MAX) {
+            Log.w(TAG, "온도 범위 밖이라 무시: $celsius")
+            return
+        }
         mainHandler.post {
             climateRetryCount = 0
             if (celsius == lastCelsius) return@post
@@ -452,5 +488,7 @@ class PleosVehicleSignals(context: Context) : VehicleSignals {
         private const val TAG = "MajiSignal"
         private const val MAX_RETRY = 5
         private const val RETRY_DELAY_MS = 1000L
+        private const val TEMP_MIN = 15.0f
+        private const val TEMP_MAX = 30.0f
     }
 }
