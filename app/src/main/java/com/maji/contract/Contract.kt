@@ -103,8 +103,21 @@ interface VehicleControl {
     /** 귀갓길: 창문·무드등 */
     fun applyRideHome(profile: Profile)
 
-    /** 최종 하차 후 원래대로 */
+    /** 최종 하차 후 원래대로. 여러 번 불러도 안전해요 (이미 원위치면 시트는 안 움직임) */
     fun restore(state: PassengerState, onDone: () -> Unit = {})
+
+    // ── 재시작 복원(#26)용: 시트 이동 기록 (설계 문서 docs/flow/restore-design.md 8.7) ──
+    // 차에서 시트 위치를 읽을 수 없어서, B가 "원래 자리에서 움직인 시간"을 기억했다가 restore 때 되돌려요.
+    // 앱이 꺼지면 이 기록이 사라지므로 C가 flow_snapshot.seatMovedMs에 저장하고, 다시 켤 때 돌려줘요.
+
+    /** 원래 자리에서 지금까지 움직인 시간 (ms, +앞 -뒤) → C가 저장 */
+    fun seatMovedMs(): Int = 0
+
+    /** 앱을 다시 켰을 때 저장해 둔 값을 B에 돌려줘요. restore보다 먼저 불러야 시트가 원위치로 돌아가요 */
+    fun restoreSeatMovedMs(ms: Int) {}
+
+    /** 시트 이동 기록이 바뀔 때마다 알려줘요 (메인 스레드) → C가 그때 저장. null이면 해제 */
+    fun setOnSeatMovedChanged(listener: ((Int) -> Unit)?) {}
 }
 
 // ───────────── C. 맞이 흐름 ─────────────
