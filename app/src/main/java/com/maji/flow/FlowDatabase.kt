@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * 탑승자 DB는 버전이 바뀌면 지우는 설정이라, 같은 DB에 넣으면 탑승자 데이터가 지워질 수 있어요.
  * 그래서 이 DB는 fallbackToDestructiveMigration을 쓰지 않아요. 표를 바꿀 때는 Migration을 직접 써요.
  */
-@Database(entities = [FlowSnapshotEntity::class], version = 2, exportSchema = false)
+@Database(entities = [FlowSnapshotEntity::class], version = 3, exportSchema = false)
 abstract class FlowDatabase : RoomDatabase() {
 
     abstract fun flowSnapshotDao(): FlowSnapshotDao
@@ -28,13 +28,20 @@ abstract class FlowDatabase : RoomDatabase() {
             }
         }
 
+        // v2 → v3: 맞이 시작 때 온도 칸 추가 (#26). 기존 칸은 그대로 둬요.
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE flow_snapshot ADD COLUMN startTemp REAL")
+            }
+        }
+
         fun get(context: Context): FlowDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     FlowDatabase::class.java,
                     "maji-flow.db"
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
     }
 }

@@ -17,5 +17,6 @@ data class FlowSnapshot(
     val savedAtMillis: Long,
     val learnedHeat: Int? = null,    // 탑승 중 탑승자가 바꾼 열선 (학습 후보)
     val learnedTemp: Float? = null,  // 탑승 중 탑승자가 바꾼 온도 (학습 후보)
-    val seatMovedMs: Int? = null     // 원래 자리에서 시트가 움직인 시간 (ms). 복원 때 B에 돌려줘요
+    val seatMovedMs: Int? = null,    // 원래 자리에서 시트가 움직인 시간 (ms). 복원 때 B에 돌려줘요
+    val startTemperature: Float? = null  // 맞이를 시작할 때 알고 있던 온도. 재시작 뒤 온도를 못 읽을 때 원래 값 대신 씀
 )
