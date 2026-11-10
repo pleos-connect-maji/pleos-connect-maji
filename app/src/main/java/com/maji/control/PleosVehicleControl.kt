@@ -224,6 +224,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
                     main.post {
                         Log.w(TAG, "[#11] 시트 출발 거절 → 이동 기록에서 뺌: ${e.message}")
                         seatTracker.reject(token)
+                        notifySeatMoved()
                     }
                 }
             )
@@ -231,6 +232,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         } catch (e: Exception) {
             Log.w(TAG, "[#11] 시트 출발 호출 실패: ${e.message}")
             seatTracker.reject(token)
+            notifySeatMoved()
             false
         }
     }
@@ -250,7 +252,10 @@ class PleosVehicleControl(context: Context) : VehicleControl {
 
         val wasMoving = seatTracker.isMoving
         val moved = seatTracker.stop(SystemClock.elapsedRealtime())
-        if (wasMoving) Log.d(TAG, "[#11] 이번에 움직인 시간 ${moved}ms, 원래 자리에서 ${seatTracker.offsetMs}ms")
+        if (wasMoving) {
+            Log.d(TAG, "[#11] 이번에 움직인 시간 ${moved}ms, 원래 자리에서 ${seatTracker.offsetMs}ms")
+            notifySeatMoved()
+        }
         afterSeatStop?.let { afterSeatStop = null; it() }
         return moved
     }
@@ -277,6 +282,28 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         } catch (e: Exception) {
             retry(e.message)
         }
+    }
+
+    // ───────── #26 재시작 복원: 시트 이동 기록 저장·불러오기 ─────────
+    // B는 기록을 들고만 있고, 저장은 C가 flow_snapshot.seatMovedMs에 해요 (설계 문서 8.7).
+
+    private var onSeatMovedChanged: ((Int) -> Unit)? = null
+
+    override fun seatMovedMs(): Int = seatTracker.offsetMs
+
+    override fun restoreSeatMovedMs(ms: Int) {
+        if (seatTracker.isMoving) stopSeat()
+        seatTracker.load(ms)
+        Log.d(TAG, "[#26] 시트 이동 기록 불러옴: ${seatTracker.offsetMs}ms")
+    }
+
+    override fun setOnSeatMovedChanged(listener: ((Int) -> Unit)?) {
+        onSeatMovedChanged = listener
+    }
+
+    // 기록이 바뀔 때마다 C에게 알려줘요 (메인 스레드에서만 불려요)
+    private fun notifySeatMoved() {
+        onSeatMovedChanged?.invoke(seatTracker.offsetMs)
     }
 
     // ───────── #10 열선 · 온도 ─────────
