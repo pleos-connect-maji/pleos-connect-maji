@@ -12,6 +12,9 @@ object ControlRules {
     const val MIN_TEMP = 15f
     const val MAX_TEMP = 30f
 
+    // 이보다 작은 시트 차이는 타이머 오차로 보고 되돌리지 않아요 (에뮬레이터 오차 4~7ms)
+    const val SEAT_RESTORE_TOLERANCE_MS = 100
+
     fun clampSeatMove(ms: Int): Int = ms.coerceIn(-MAX_SEAT_MOVE_MS, MAX_SEAT_MOVE_MS)
     fun clampHeat(level: Int): Int = level.coerceIn(MIN_HEAT, MAX_HEAT)
     fun clampTemperature(celsius: Float): Float = celsius.coerceIn(MIN_TEMP, MAX_TEMP)
@@ -113,6 +116,22 @@ class SeatMoveTracker(private val maxMs: Int = ControlRules.MAX_SEAT_MOVE_MS) {
         return ms
     }
 
-    /** 원래 자리로 가려면 움직여야 하는 시간 (+앞, -뒤) */
-    fun restorePlanMs(): Int = -offsetMs
+    /**
+     * 원래 자리로 가려면 움직여야 하는 시간 (+앞, -뒤).
+     * 남은 차이가 아주 작으면(타이머 오차 수준) 0 → restore를 여러 번 불러도 시트가 들썩이지 않아요.
+     */
+    fun restorePlanMs(): Int =
+        if (kotlin.math.abs(offsetMs) < ControlRules.SEAT_RESTORE_TOLERANCE_MS) 0 else -offsetMs
+
+    /**
+     * 앱을 다시 켰을 때 저장해 둔 기록을 되살려요 (#26).
+     * 지난 출발·직접 조절 기록은 이전 실행의 것이라 모두 비워요.
+     */
+    fun load(savedOffsetMs: Int) {
+        offsetMs = savedOffsetMs.coerceIn(-maxMs, maxMs)
+        startedAt = null
+        recorded.clear()
+        manualMs = 0
+        currentManual = false
+    }
 }

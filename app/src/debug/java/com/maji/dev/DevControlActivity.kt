@@ -60,8 +60,15 @@ class DevControlActivity : ComponentActivity() {
 private fun DevControlScreen() {
     val context = LocalContext.current.applicationContext
     val log = remember { DevLog() }
-    val control = remember { PleosVehicleControl(context) }
-    DisposableEffect(control) { onDispose { control.release() } }
+    // 재시작 흉내(#26) 때 새 B로 바꿔 끼우려고 상태로 들고 있어요
+    var control by remember { mutableStateOf(PleosVehicleControl(context)) }
+    var seatMoved by remember { mutableIntStateOf(0) } // B가 알려 준 시트 기록 (C가 저장할 값)
+    DisposableEffect(control) {
+        // 지금 B를 따로 잡아 둬요. onDispose에서 control을 바로 읽으면 "새 B"를 꺼 버려요
+        val current = control
+        current.setOnSeatMovedChanged { seatMoved = it }
+        onDispose { current.release() }
+    }
 
     var saved by remember { mutableStateOf<PassengerState?>(null) }
     var seatTotalMs by remember { mutableIntStateOf(0) } // ◀▶로 맞춘 합계 (D가 저장할 값)
@@ -72,7 +79,7 @@ private fun DevControlScreen() {
     Row(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("B 차량 제어 확인", style = MaterialTheme.typography.titleLarge)
-            Text("제어 가능: ${control.isControlAvailable()}  ·  ◀▶ 합계 ${seatTotalMs}ms")
+            Text("제어 가능: ${control.isControlAvailable()}  ·  ◀▶ 합계 ${seatTotalMs}ms  ·  시트 기록 ${seatMoved}ms")
 
             Button(onClick = {
                 control.readPassengerState { saved = it; log.add("#9 읽음 → $it") }
@@ -108,6 +115,14 @@ private fun DevControlScreen() {
                 if (s == null) log.add("#14 먼저 1번으로 상태를 읽어 주세요")
                 else control.restore(s) { log.add("#14 복구 끝 → $s") }
             }, modifier = Modifier.fillMaxWidth()) { Text("5. 원래대로 복구 (#14)") }
+
+            Button(onClick = {
+                // C가 하는 일을 흉내: 기록 저장 → 앱 꺼짐(B 버림) → 새 B 만들고 저장값 돌려주기
+                val saved = control.seatMovedMs()
+                control = PleosVehicleControl(context).also { it.restoreSeatMovedMs(saved) }
+                seatMoved = control.seatMovedMs()
+                log.add("#26 재시작 흉내: 저장 ${saved}ms → 새 B에 불러옴 ${control.seatMovedMs()}ms")
+            }, modifier = Modifier.fillMaxWidth()) { Text("6. 앱 재시작 흉내: 시트 기록 저장 → 불러오기 (#26)") }
         }
 
         LazyColumn(modifier = Modifier.weight(1f)) {
