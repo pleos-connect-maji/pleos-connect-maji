@@ -136,6 +136,55 @@ class ControlRulesTest {
         assertEquals(0 to 0, ControlRules.splitHeatVent(0))
     }
 
+    // ───────── #26 재시작 복원 ─────────
+
+    @Test
+    fun `앱을 다시 켜고 저장한 기록을 불러오면 원위치로 되돌릴 수 있다`() {
+        val before = SeatMoveTracker()
+        before.start(true, 0); before.stop(2_483)
+        val saved = before.offsetMs                // C가 flow_snapshot.seatMovedMs에 저장
+
+        val after = SeatMoveTracker()              // 앱 재시작 = 새 기록
+        assertEquals(0, after.restorePlanMs())     // 불러오기 전엔 되돌릴 게 없음 (이게 #26 문제)
+        after.load(saved)
+        assertEquals(-2_483, after.restorePlanMs())
+    }
+
+    @Test
+    fun `불러온 기록 위에 새 이동이 이어서 쌓인다`() {
+        val t = SeatMoveTracker()
+        t.load(2_000)
+        t.start(false, 0); t.stop(500)
+        assertEquals(1_500, t.offsetMs)
+    }
+
+    @Test
+    fun `불러오기는 이전 실행의 진행 중 이동과 직접 조절 기록을 비운다`() {
+        val t = SeatMoveTracker()
+        val old = t.start(true, 0, manual = true)
+        t.load(1_000)
+        assertFalse(t.isMoving)
+        assertEquals(0, t.takeManualMs())
+        t.reject(old)                               // 이전 실행의 늦은 거절은 무시
+        assertEquals(1_000, t.offsetMs)
+    }
+
+    @Test
+    fun `저장값이 범위를 넘으면 잘라서 불러온다`() {
+        val t = SeatMoveTracker(maxMs = 10_000)
+        t.load(50_000)
+        assertEquals(10_000, t.offsetMs)
+    }
+
+    @Test
+    fun `복구를 여러 번 불러도 타이머 오차만 남았으면 다시 움직이지 않는다`() {
+        val t = SeatMoveTracker()
+        t.start(true, 0); t.stop(2_483)
+        t.start(false, 5_000); t.stop(7_490)        // 복구로 2490ms 되돌림 → 남은 차이 -7ms
+        assertEquals(-7, t.offsetMs)
+        assertEquals(0, t.restorePlanMs())          // 두 번째 restore는 시트를 안 움직임
+    }
+
     // ───────── 값 범위 (#10, #46) ─────────
 
     @Test
