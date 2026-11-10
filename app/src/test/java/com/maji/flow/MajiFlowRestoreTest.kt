@@ -33,6 +33,11 @@ class MajiFlowRestoreTest {
 
     private class FakeControl : VehicleControl {
         var restored: PassengerState? = null
+        var seatMoved = 0
+        var seatListener: ((Int) -> Unit)? = null
+        override fun seatMovedMs(): Int = seatMoved
+        override fun restoreSeatMovedMs(ms: Int) { seatMoved = ms }
+        override fun setOnSeatMovedChanged(listener: ((Int) -> Unit)?) { seatListener = listener }
         override fun isControlAvailable() = true
         override fun readPassengerState(onResult: (PassengerState) -> Unit) =
             onResult(PassengerState(seatHeat = 0, temperature = null, windowPosition = 3))
@@ -88,6 +93,36 @@ class MajiFlowRestoreTest {
         assertEquals(MajiStep.PREPARING, flow.step)
         flow.cancel()
         assertEquals(saved, control.restored)
+    }
+
+    @Test
+    fun `시트 이동 기록을 저장하고, 다시 켰을 때 B에 돌려줘요`() = runBlocking {
+        val store = FakeStore()
+        val control = FakeControl()
+        val flow = flowWith(store, FakeProfileRepository(listOf(mom)), control, FakeGreeter())
+
+        flow.start(mom)
+        control.seatMoved = 800
+        control.seatListener?.invoke(800)  // 시트가 움직이면 B가 알려줘요
+        assertEquals(800, store.snapshot!!.seatMovedMs)
+
+        // 앱을 껐다 켠 것처럼 새 B와 새 흐름으로 되살려요
+        val newControl = FakeControl()
+        val reopened = flowWith(store, FakeProfileRepository(listOf(mom)), newControl, FakeGreeter())
+        assertTrue(reopened.restoreSavedIfFresh())
+        assertEquals(800, newControl.seatMoved)
+    }
+
+    @Test
+    fun `맞이가 끝난 뒤에는 시트 기록이 바뀌어도 저장하지 않아요`() {
+        val store = FakeStore()
+        val control = FakeControl()
+        val flow = flowWith(store, FakeProfileRepository(listOf(mom)), control, FakeGreeter())
+
+        flow.start(mom)
+        flow.finish()
+        control.seatListener?.invoke(300)
+        assertNull(store.snapshot)
     }
 
     @Test
