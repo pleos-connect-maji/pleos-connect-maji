@@ -126,6 +126,28 @@ class MajiFlowRestoreTest {
     }
 
     @Test
+    fun `맞이를 시작할 때 알던 온도를 저장하고, 온도를 못 읽어도 그 값으로 되돌려요`() = runBlocking {
+        val store = FakeStore()
+        val control = FakeControl()  // 준비 때 온도를 못 읽는 상황 (readPassengerState의 온도가 null)
+        val flow = flowWith(store, FakeProfileRepository(listOf(mom)), control, FakeGreeter())
+
+        flow.onPassengerTemperatureChanged(22f)  // 맞이 전에 앱이 알던 온도
+        flow.start(mom)
+        flow.onParkChanged(true)  // 준비하면서 온도를 15℃ 등으로 바꿔도 원래 값은 22℃로 남아요
+        assertEquals(22f, store.snapshot!!.startTemperature)
+        assertEquals(22f, store.snapshot!!.savedState!!.temperature)
+
+        // 재시작 뒤: 저장된 원래 온도가 비어 있었던 경우를 가정
+        val stored = store.snapshot!!.copy(savedState = store.snapshot!!.savedState!!.copy(temperature = null))
+        val reopenStore = FakeStore().apply { snapshot = stored }
+        val newControl = FakeControl()
+        val reopened = flowWith(reopenStore, FakeProfileRepository(listOf(mom)), newControl, FakeGreeter())
+        assertTrue(reopened.restoreSavedIfFresh())
+        reopened.cancel()
+        assertEquals(22f, newControl.restored!!.temperature)
+    }
+
+    @Test
     fun `복원할 때 인사와 안내음을 다시 재생하지 않아요`() = runBlocking {
         val greeter = FakeGreeter()
         val store = FakeStore().apply {

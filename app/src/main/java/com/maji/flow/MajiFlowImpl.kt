@@ -34,6 +34,7 @@ class MajiFlowImpl(
 
     private var isPark = false
     private var lastTemperature: Float? = null  // 에뮬레이터에서 못 읽는 원래 온도 대신 쓸 값 (A가 알려줌)
+    private var startTemperature: Float? = null  // 맞이를 시작할 때 알던 온도 (준비 때 바뀌기 전 값). 재시작 뒤에도 씀
     private var savedState: PassengerState? = null  // 바꾸기 전 조수석 상태, 하차 때 되돌려요
 
     private var preparedClimate: Climate? = null  // 자리 준비 때 맞춘 값. 이 값과 다르게 바뀐 칸만 학습해요
@@ -59,6 +60,7 @@ class MajiFlowImpl(
         currentProfile = profile
         isPark = false
         savedState = null
+        startTemperature = lastTemperature  // 준비 전에 알던 온도를 원래 값 후보로 잡아요 (#26)
         preparedClimate = null
         changedHeat = null
         changedTemperature = null
@@ -130,7 +132,7 @@ class MajiFlowImpl(
 
             // 준비 전에 원래 상태를 먼저 읽어 둬야 나중에 되돌릴 수 있어요
             control.readPassengerState { state ->
-                savedState = state.copy(temperature = state.temperature ?: lastTemperature)
+                savedState = state.copy(temperature = state.temperature ?: startTemperature ?: lastTemperature)
                 // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
                 val climate = profiles.climateFor(fresh, profiles.seasonFor(month())) ?: Climate()
                 preparedClimate = climate
@@ -193,7 +195,8 @@ class MajiFlowImpl(
             savedAtMillis = now(),
             learnedHeat = changedHeat,
             learnedTemp = changedTemperature,
-            seatMovedMs = control.seatMovedMs()
+            seatMovedMs = control.seatMovedMs(),
+            startTemperature = startTemperature
         )
         scope.launch { stateStore?.save(snapshot) }
     }
@@ -216,7 +219,11 @@ class MajiFlowImpl(
         }
         currentProfile = profiles.get(snapshot.profileId)
         currentSeason = snapshot.season
-        savedState = snapshot.savedState
+        startTemperature = snapshot.startTemperature
+        // 저장된 온도를 못 읽었으면(null) 시작할 때 알던 온도로 채워요 (#26)
+        savedState = snapshot.savedState?.let { s ->
+            if (s.temperature == null && snapshot.startTemperature != null) s.copy(temperature = snapshot.startTemperature) else s
+        }
         preparedClimate = snapshot.preparedClimate
         changedHeat = snapshot.learnedHeat  // 저장된 학습 값을 이어받아요 (#26)
         changedTemperature = snapshot.learnedTemp
