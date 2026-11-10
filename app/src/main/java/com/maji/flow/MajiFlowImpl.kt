@@ -41,6 +41,11 @@ class MajiFlowImpl(
     private var changedTemperature: Float? = null
     private var currentSeason: Season? = null  // 맞이를 시작할 때 정한 계절 (학습과 복원에 씀)
 
+    init {
+        // 시트 이동 기록이 바뀌면 저장해요 (#26, 근희 #86). 맞이 중일 때만 저장해요 (끝난 뒤에는 저장 기록을 다시 만들지 않아요)
+        control.setOnSeatMovedChanged { if (isInProgress()) persist() }
+    }
+
     override val step: MajiStep get() = current
     override val profile: Profile? get() = currentProfile
 
@@ -105,6 +110,8 @@ class MajiFlowImpl(
     }
 
     // ───────────── 내부 ─────────────
+
+    private fun isInProgress(): Boolean = current != MajiStep.IDLE && current != MajiStep.FINISHED
 
     // 탑승 뒤(BOARDED, RIDING_HOME)에만 탑승자가 바꾼 값으로 봐요
     private fun isPassengerSeated(): Boolean =
@@ -185,7 +192,8 @@ class MajiFlowImpl(
             preparedClimate = preparedClimate,
             savedAtMillis = now(),
             learnedHeat = changedHeat,
-            learnedTemp = changedTemperature
+            learnedTemp = changedTemperature,
+            seatMovedMs = control.seatMovedMs()
         )
         scope.launch { stateStore?.save(snapshot) }
     }
@@ -212,6 +220,8 @@ class MajiFlowImpl(
         preparedClimate = snapshot.preparedClimate
         changedHeat = snapshot.learnedHeat  // 저장된 학습 값을 이어받아요 (#26)
         changedTemperature = snapshot.learnedTemp
+        // 시트 기록은 restore() 전에 B에 돌려줘야 시트가 원위치로 돌아가요 (근희 안내)
+        snapshot.seatMovedMs?.let { control.restoreSeatMovedMs(it) }
         // 저장 기록을 다시 쓰지 않도록, 단계만 바꾸고 알려 줘요
         current = snapshot.step
         listeners.forEach { it(snapshot.step) }
