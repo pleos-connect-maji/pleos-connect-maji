@@ -236,6 +236,16 @@ class ControlRulesTest {
     }
 
     @Test
+    fun `테스트용 제어 불가 강제가 켜지면 권한이 있어도 대체 모드`() {
+        assertFalse(ControlRules.isControlAvailable(listOf(true, true, true), allPrepareFailed = false, forcedOff = true))
+    }
+
+    @Test
+    fun `강제를 끄면 다시 제어 가능`() {
+        assertTrue(ControlRules.isControlAvailable(listOf(true, true, true), allPrepareFailed = false, forcedOff = false))
+    }
+
+    @Test
     fun `자리 준비 명령이 전부 실패했으면 대체 모드`() {
         assertFalse(ControlRules.isControlAvailable(listOf(true, true, true), allPrepareFailed = true))
     }

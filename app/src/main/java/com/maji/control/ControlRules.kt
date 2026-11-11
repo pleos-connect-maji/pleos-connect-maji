@@ -25,11 +25,12 @@ object ControlRules {
 
     /**
      * 제어 가능 여부 (#13)
+     * - 테스트용 "제어 불가 강제"(#97, debug 전용)가 켜져 있으면 불가
      * - 자리 준비 명령이 전부 실패한 적이 있으면 불가
      * - 아니면 시트·열선·온도 중 하나라도 "된다(true)" 또는 "아직 확인 중(null)"이면 일단 시도
      */
-    fun isControlAvailable(caps: List<Boolean?>, allPrepareFailed: Boolean): Boolean =
-        !allPrepareFailed && caps.any { it != false }
+    fun isControlAvailable(caps: List<Boolean?>, allPrepareFailed: Boolean, forcedOff: Boolean = false): Boolean =
+        !forcedOff && !allPrepareFailed && caps.any { it != false }
 
     /**
      * 열선·통풍을 Contract 약속(-3..3, 음수 = 통풍) 하나로 합쳐요.

@@ -11,6 +11,8 @@ import ai.pleos.playground.vehicle.constant.control.LightSwitch
 import ai.pleos.playground.vehicle.constant.control.MoveControl
 import ai.pleos.playground.vehicle.constant.unit.TemperatureUnit
 import android.content.Context
+import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -29,7 +31,8 @@ import com.maji.contract.VehicleControl
  */
 class PleosVehicleControl(context: Context) : VehicleControl {
 
-    private val vehicle = Vehicle(context.applicationContext).apply { initialize() }
+    private val appContext = context.applicationContext
+    private val vehicle = Vehicle(appContext).apply { initialize() }
     private val main = Handler(Looper.getMainLooper())
 
     // 조수석 = 1열 오른쪽
@@ -46,15 +49,41 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     private var capSeatHeat: Boolean? = null
     private var capTemperature: Boolean? = null
     private var allPrepareFailed = false
-    private var commandSucceeded = false
-    private var ventIsSeparate: Boolean? = null // null = 아직 모름 → 열선 값 하나로 보내요 (에뮬레이터 방식) // 이번 자리 준비에서 성공한 명령이 하나라도 있는지
+    private var commandSucceeded = false // 이번 자리 준비에서 성공한 명령이 하나라도 있는지
+    private var ventIsSeparate: Boolean? = null // null = 아직 모름 → 열선 값 하나로 보내요 (에뮬레이터 방식)
+
+    // ───────── #97 테스트용 "제어 불가 강제" (debug 빌드에서만) ─────────
+    // 에뮬레이터에서는 제어가 막힌 차(대체 모드)를 재현할 수 없어서, 확인 화면의 스위치로 흉내 내요.
+    // 켜면 차에 명령을 보내지 않고 "실패"로 처리해요 → isControlAvailable()=false, allPrepareFailed까지 실제처럼 지나가요.
+    // 설정은 앱 저장소에 있어서 확인 화면에서 켜면 실제 앱 화면에도 바로 반영돼요.
+    private val debuggable = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    private val debugPrefs: SharedPreferences = debugPrefs(appContext)
+    private val forceOffListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == KEY_FORCE_OFF && !forcedOff()) {
+            allPrepareFailed = false // 강제를 끄면 강제 때문에 쌓인 실패 기록도 비워요
+            Log.d(TAG, "[#97] 제어 불가 강제 OFF → 정상")
+        }
+    }
+
+    private fun forcedOff(): Boolean = debuggable && debugPrefs.getBoolean(KEY_FORCE_OFF, false)
+
+    /** 강제 중이면 명령을 보내지 않고 실패로 처리해요. true면 호출한 쪽은 여기서 멈춰요 */
+    private fun blockedByForce(name: String, onDone: () -> Unit = {}): Boolean {
+        if (!forcedOff()) return false
+        Log.w(TAG, "[#97] 제어 불가 강제 중 → $name 실패 처리")
+        main.post(onDone)
+        return true
+    }
 
     init {
         checkControlCapabilities()
+        if (debuggable) debugPrefs.registerOnSharedPreferenceChangeListener(forceOffListener)
     }
 
     override fun isControlAvailable(): Boolean {
-        return ControlRules.isControlAvailable(listOf(capSeatMove, capSeatHeat, capTemperature), allPrepareFailed)
+        return ControlRules.isControlAvailable(
+            listOf(capSeatMove, capSeatHeat, capTemperature), allPrepareFailed, forcedOff = forcedOff()
+        )
     }
 
     private fun checkControlCapabilities() {
@@ -214,6 +243,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
      */
     private fun startSeat(forward: Boolean, manual: Boolean = false): Boolean {
         if (seatTracker.isMoving) stopSeat()
+        if (blockedByForce("시트 출발")) return false
         val token = seatTracker.start(forward, SystemClock.elapsedRealtime(), manual)
         return try {
             vehicle.getSeat().moveSeatForeAft(
@@ -314,6 +344,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             main.post(onDone)
             return
         }
+        if (blockedByForce("열선", onDone)) return
         val v = ControlRules.clampHeat(level)
         if (ventIsSeparate == true) {
             // 통풍이 따로 있는 차: 2 → 열선 2 + 통풍 0, -2 → 열선 0 + 통풍 2
@@ -357,6 +388,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             main.post(onDone)
             return
         }
+        if (blockedByForce("온도", onDone)) return
         val v = ControlRules.clampTemperature(celsius)
         try {
             vehicle.getHVAC().setHvacTemperature(
@@ -416,6 +448,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     }
 
     private fun setWindow(position: Int, onDone: () -> Unit) {
+        if (blockedByForce("창문", onDone)) return
         try {
             vehicle.getWindow().setWindowPosition(
                 passengerWindow, position,
@@ -433,6 +466,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
      * 바꾸기 전 밝기·색·켜짐 상태를 읽어 두되, 읽기가 실패해도 무드등은 켜요 (못 읽은 값만 null로 기억).
      */
     private fun applyAmbientLight(brightness: Int, argb: Int) {
+        if (blockedByForce("무드등")) return
         val light = vehicle.getLight()
         val round = lightRound
         fun stale() = round != lightRound // 그사이 복구됐으면 더 진행하지 않아요
@@ -528,6 +562,7 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     /** 앱이 꺼질 때. 움직이는 시트를 멈추고 SDK 연결을 풀어요 */
     fun release() {
         lightRound++
+        if (debuggable) debugPrefs.unregisterOnSharedPreferenceChangeListener(forceOffListener)
         if (seatTracker.isMoving) stopSeat()
         main.removeCallbacksAndMessages(null)
         vehicle.release()
@@ -539,6 +574,18 @@ class PleosVehicleControl(context: Context) : VehicleControl {
         private const val STOP_RETRY = 3
         private const val STOP_RETRY_DELAY_MS = 300L
 
+        private const val DEBUG_PREFS = "maji_control_debug"
+        private const val KEY_FORCE_OFF = "force_control_off"
+
+        private fun debugPrefs(context: Context): SharedPreferences =
+            context.applicationContext.getSharedPreferences(DEBUG_PREFS, Context.MODE_PRIVATE)
+
+        /** 테스트용 "제어 불가 강제" 켜기/끄기 (#97). debug 빌드에서만 효과가 있어요 */
+        fun setForceControlOff(context: Context, on: Boolean) {
+            debugPrefs(context).edit().putBoolean(KEY_FORCE_OFF, on).apply()
+        }
+
+        fun isForceControlOff(context: Context): Boolean = debugPrefs(context).getBoolean(KEY_FORCE_OFF, false)
 
         // 프로필에 무드등 색이 없을 때 귀갓길 기본 색 (따뜻한 주황빛, ARGB)
         const val DEFAULT_LIGHT_COLOR = 0xFFFFB36B.toInt()
