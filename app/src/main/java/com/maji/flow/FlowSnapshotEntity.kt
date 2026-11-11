@@ -24,7 +24,9 @@ data class FlowSnapshotEntity(
     val preparedTemp: Float?,
     val savedAtMillis: Long,
     val learnedHeat: Int?,
-    val learnedTemp: Float?
+    val learnedTemp: Float?,
+    val seatMovedMs: Int?,  // version 2에서 추가 (#26, 근희 #86)
+    val startTemp: Float?   // version 3에서 추가 (#26): 맞이 시작 때 알던 온도
 )
 
 fun FlowSnapshot.toEntity(): FlowSnapshotEntity = FlowSnapshotEntity(
@@ -40,7 +42,9 @@ fun FlowSnapshot.toEntity(): FlowSnapshotEntity = FlowSnapshotEntity(
     preparedTemp = preparedClimate?.temperature,
     savedAtMillis = savedAtMillis,
     learnedHeat = learnedHeat,
-    learnedTemp = learnedTemp
+    learnedTemp = learnedTemp,
+    seatMovedMs = seatMovedMs,
+    startTemp = startTemperature
 )
 
 fun FlowSnapshotEntity.toSnapshot(): FlowSnapshot = FlowSnapshot(
@@ -51,5 +55,7 @@ fun FlowSnapshotEntity.toSnapshot(): FlowSnapshot = FlowSnapshot(
     preparedClimate = if (preparedSet) Climate(preparedSeatHeat, preparedTemp) else null,
     savedAtMillis = savedAtMillis,
     learnedHeat = learnedHeat,
-    learnedTemp = learnedTemp
+    learnedTemp = learnedTemp,
+    seatMovedMs = seatMovedMs,
+    startTemperature = startTemp
 )

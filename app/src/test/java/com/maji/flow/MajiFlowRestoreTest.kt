@@ -33,6 +33,11 @@ class MajiFlowRestoreTest {
 
     private class FakeControl : VehicleControl {
         var restored: PassengerState? = null
+        var seatMoved = 0
+        var seatListener: ((Int) -> Unit)? = null
+        override fun seatMovedMs(): Int = seatMoved
+        override fun restoreSeatMovedMs(ms: Int) { seatMoved = ms }
+        override fun setOnSeatMovedChanged(listener: ((Int) -> Unit)?) { seatListener = listener }
         override fun isControlAvailable() = true
         override fun readPassengerState(onResult: (PassengerState) -> Unit) =
             onResult(PassengerState(seatHeat = 0, temperature = null, windowPosition = 3))
@@ -88,6 +93,58 @@ class MajiFlowRestoreTest {
         assertEquals(MajiStep.PREPARING, flow.step)
         flow.cancel()
         assertEquals(saved, control.restored)
+    }
+
+    @Test
+    fun `시트 이동 기록을 저장하고, 다시 켰을 때 B에 돌려줘요`() = runBlocking {
+        val store = FakeStore()
+        val control = FakeControl()
+        val flow = flowWith(store, FakeProfileRepository(listOf(mom)), control, FakeGreeter())
+
+        flow.start(mom)
+        control.seatMoved = 800
+        control.seatListener?.invoke(800)  // 시트가 움직이면 B가 알려줘요
+        assertEquals(800, store.snapshot!!.seatMovedMs)
+
+        // 앱을 껐다 켠 것처럼 새 B와 새 흐름으로 되살려요
+        val newControl = FakeControl()
+        val reopened = flowWith(store, FakeProfileRepository(listOf(mom)), newControl, FakeGreeter())
+        assertTrue(reopened.restoreSavedIfFresh())
+        assertEquals(800, newControl.seatMoved)
+    }
+
+    @Test
+    fun `맞이가 끝난 뒤에는 시트 기록이 바뀌어도 저장하지 않아요`() {
+        val store = FakeStore()
+        val control = FakeControl()
+        val flow = flowWith(store, FakeProfileRepository(listOf(mom)), control, FakeGreeter())
+
+        flow.start(mom)
+        flow.finish()
+        control.seatListener?.invoke(300)
+        assertNull(store.snapshot)
+    }
+
+    @Test
+    fun `맞이를 시작할 때 알던 온도를 저장하고, 온도를 못 읽어도 그 값으로 되돌려요`() = runBlocking {
+        val store = FakeStore()
+        val control = FakeControl()  // 준비 때 온도를 못 읽는 상황 (readPassengerState의 온도가 null)
+        val flow = flowWith(store, FakeProfileRepository(listOf(mom)), control, FakeGreeter())
+
+        flow.onPassengerTemperatureChanged(22f)  // 맞이 전에 앱이 알던 온도
+        flow.start(mom)
+        flow.onParkChanged(true)  // 준비하면서 온도를 15℃ 등으로 바꿔도 원래 값은 22℃로 남아요
+        assertEquals(22f, store.snapshot!!.startTemperature)
+        assertEquals(22f, store.snapshot!!.savedState!!.temperature)
+
+        // 재시작 뒤: 저장된 원래 온도가 비어 있었던 경우를 가정
+        val stored = store.snapshot!!.copy(savedState = store.snapshot!!.savedState!!.copy(temperature = null))
+        val reopenStore = FakeStore().apply { snapshot = stored }
+        val newControl = FakeControl()
+        val reopened = flowWith(reopenStore, FakeProfileRepository(listOf(mom)), newControl, FakeGreeter())
+        assertTrue(reopened.restoreSavedIfFresh())
+        reopened.cancel()
+        assertEquals(22f, newControl.restored!!.temperature)
     }
 
     @Test

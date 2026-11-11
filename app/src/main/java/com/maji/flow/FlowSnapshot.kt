@@ -7,7 +7,7 @@ import com.maji.contract.Season
 
 // 맞이 상태를 한 번에 담은 것 (#26). 앱을 다시 켰을 때 되살리는 데 써요.
 // 탑승 중 바뀐 열선·온도(학습 값)도 담아서, 복원 후 끝낼 때 같은 탑승자에게 쌓여요 (팀 결정: 학습 값 저장).
-// 시트 이동 기록은 근희 쪽에서 따로 저장해요.
+// 시트 이동 기록(seatMovedMs)도 담아요. 근희 B가 기록하고, C가 여기 저장해요 (#86, 설계 문서 8.7).
 data class FlowSnapshot(
     val step: MajiStep,
     val profileId: Long,
@@ -16,5 +16,7 @@ data class FlowSnapshot(
     val preparedClimate: Climate?,   // 준비 때 보낸 값 (학습 기준)
     val savedAtMillis: Long,
     val learnedHeat: Int? = null,    // 탑승 중 탑승자가 바꾼 열선 (학습 후보)
-    val learnedTemp: Float? = null   // 탑승 중 탑승자가 바꾼 온도 (학습 후보)
+    val learnedTemp: Float? = null,  // 탑승 중 탑승자가 바꾼 온도 (학습 후보)
+    val seatMovedMs: Int? = null,    // 원래 자리에서 시트가 움직인 시간 (ms). 복원 때 B에 돌려줘요
+    val startTemperature: Float? = null  // 맞이를 시작할 때 알고 있던 온도. 재시작 뒤 온도를 못 읽을 때 원래 값 대신 씀
 )
