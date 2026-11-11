@@ -123,6 +123,16 @@ private fun DevControlScreen() {
                 seatMoved = control.seatMovedMs()
                 log.add("#26 재시작 흉내: 저장 ${saved}ms → 새 B에 불러옴 ${control.seatMovedMs()}ms")
             }, modifier = Modifier.fillMaxWidth()) { Text("6. 앱 재시작 흉내: 시트 기록 저장 → 불러오기 (#26)") }
+
+            // #97 대체 모드(S6) 테스트: 켜 두고 실제 앱으로 돌아가 맞이를 시작하면 진행 화면에 대체 모드 문구가 나와요
+            var forceOff by remember { mutableStateOf(PleosVehicleControl.isForceControlOff(context)) }
+            Button(onClick = {
+                forceOff = !forceOff
+                PleosVehicleControl.setForceControlOff(context, forceOff)
+                log.add("#97 제어 불가 강제 ${if (forceOff) "ON → 명령 안 보냄, 대체 모드" else "OFF → 정상"}")
+            }, modifier = Modifier.fillMaxWidth()) {
+                Text("7. 제어 불가 강제 (대체 모드 테스트): ${if (forceOff) "ON" else "OFF"}")
+            }
         }
 
         LazyColumn(modifier = Modifier.weight(1f)) {
