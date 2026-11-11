@@ -154,6 +154,7 @@ private fun MajiApp() {
             drivingRestricted = drivingRestricted,
             onSaved = { seatSetupDone = true },
             onSkip = { seatSetupDone = true },
+            control = control,  // 시트 ◀▶(앞뒤) 연결에 필요 (빠져 있어서 시트가 안 움직였어요)
             onHeatChange = { control.setSeatHeat(it) },
             onTempChange = { celsius -> if (celsius != null) control.setTemperature(celsius) }
         )
