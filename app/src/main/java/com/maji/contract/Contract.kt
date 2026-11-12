@@ -112,6 +112,9 @@ interface VehicleControl {
     /** 타는 중 무드등 바꾸기. 처음 바꾸기 전 값은 B가 기억했다가 restore 때 되돌려요 */
     fun setAmbientLight(light: AmbientLight) {}
 
+    /** 앱 ◀▶로 시트를 실제로 움직인 횟수 (C가 탈 때와 내릴 때를 비교해서, 탄 뒤 앱으로 움직였을 때만 시트를 기억해요) */
+    fun manualSeatMoveCount(): Int = 0
+
     /** 지금 차의 무드등 읽기 (내릴 때 C가 마지막 값을 기억하려고). 못 읽으면 null. 꼭 한 번 불러요 (메인 스레드) */
     fun readAmbientLight(onResult: (AmbientLight?) -> Unit) = onResult(null)
 

@@ -2,6 +2,8 @@ package com.maji.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,6 +31,7 @@ import com.maji.ui.theme.MoodLightColors
 private const val LIGHT_STEP = 10
 private const val TEMP_STEP = 0.5f
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RideAdjustPanel(
     heat: Int,
@@ -100,7 +103,12 @@ fun RideAdjustPanel(
                         onLight(light.copy(brightness = (light.brightness + LIGHT_STEP).coerceAtMost(ProfileRules.BRIGHTNESS_MAX)))
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                // 폭이 모자라면(넓은 창 경계 1100dp 근처는 패널이 약 400dp) 두 줄로 넘겨서 원마다 76dp 누르는 영역을 지켜요 (#112 리뷰)
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     MoodLightColors.all.forEach { (name, color) ->
                         val argb = color.toArgb()
                         ColorChoice(name, color, selected = (light.color and 0xFFFFFF) == (argb and 0xFFFFFF), enabled = true) {

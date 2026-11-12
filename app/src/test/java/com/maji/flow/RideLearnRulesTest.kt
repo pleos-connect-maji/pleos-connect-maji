@@ -21,9 +21,11 @@ class RideLearnRulesTest {
 
     @Test
     fun `시트는 탈 때와 내릴 때 기록이 다를 때만`() {
-        assertEquals(1200, RideLearnRules.seatToLearn(300, 1200))
-        assertNull(RideLearnRules.seatToLearn(300, 300))
-        assertNull(RideLearnRules.seatToLearn(null, 1200))  // 재시작으로 탈 때 기록을 모름
+        assertEquals(1200, RideLearnRules.seatToLearn(300, 1200, movedInApp = true))
+        assertNull(RideLearnRules.seatToLearn(300, 300, movedInApp = true))
+        assertNull(RideLearnRules.seatToLearn(null, 1200, movedInApp = true))  // 재시작으로 탈 때 기록을 모름
+        // 준비 출발이 문 열린 뒤 늦게 거절돼 300 → 0이 돼도, 앱으로 안 움직였으면 저장 안 해요
+        assertNull(RideLearnRules.seatToLearn(300, 0, movedInApp = false))
     }
 
     @Test

@@ -365,9 +365,23 @@ class MajiFlowTest {
         flow.onPassengerDoorChanged(true)
         flow.onParkChanged(false)
         control.seatMoved = 1200               // 타는 중 앱으로 앞으로 더
+        control.manualMoves = 1
         flow.finish()
 
         assertEquals(1200, repo.get(1)!!.seatMoveMs)
+    }
+
+    @Test
+    fun `준비 출발이 문 열린 뒤 늦게 거절돼 기록이 줄어도 저장하지 않아요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        control.seatMoved = 300
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        control.seatMoved = 0                  // 늦은 거절로 기록만 되돌아감, 앱 조작 없음
+        flow.finish()
+
+        assertEquals(500, repo.get(1)!!.seatMoveMs)
     }
 
     @Test
@@ -418,6 +432,8 @@ class MajiFlowTest {
         val rideHomeFor = mutableListOf<String>()
         var restored: PassengerState? = null
         var seatMoved = 0                    // 원래 자리에서 움직인 시간 (#111)
+        var manualMoves = 0                  // 앱 ◀▶로 움직인 횟수
+        override fun manualSeatMoveCount() = manualMoves
         var ambient: AmbientLight? = null    // 지금 차 무드등 (#111)
         var restoredAfterLightRead = false
 
