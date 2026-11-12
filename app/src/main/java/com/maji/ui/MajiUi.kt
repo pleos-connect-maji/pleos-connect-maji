@@ -102,7 +102,9 @@ fun MajiScaffold(
             if (wide) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 72.dp, vertical = 56.dp)) {
                     Spacer(Modifier.weight(0.4f))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(64.dp)) {
+                    // 오른쪽(내용·버튼)은 왼쪽 덩어리의 세로 가운데에 맞춰요.
+                    // 내용 없이 버튼만 있을 때 버튼이 위에 붙어 보이지 않게 ("다 내렸어요" 등)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp), content = top)
                         Column(Modifier.weight(1.08f), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                             content()
