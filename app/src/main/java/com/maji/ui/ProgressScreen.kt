@@ -143,7 +143,8 @@ fun ProgressRoute(
                 onTemperature = { temp = it; control.setTemperature(it) },
                 onSeatStart = { control.startSeatMove(it) },
                 onSeatStop = { control.stopSeatMove(); seatMs = control.seatMovedMs() },
-                onLight = { light = it; control.setAmbientLight(it) }
+                onLight = { light = it; control.setAmbientLight(it) },
+                season = seasonName(profiles.seasonFor(LocalDate.now().monthValue))
             )
         }
     } else null

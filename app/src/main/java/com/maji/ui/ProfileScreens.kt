@@ -56,6 +56,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.maji.R
 import com.maji.contract.Profile
+import com.maji.contract.Season
 import com.maji.contract.ProfileRepository
 import com.maji.profile.FakeProfileRepository
 import com.maji.profile.ProfileRules
@@ -63,6 +64,7 @@ import com.maji.ui.theme.MajiBackground
 import com.maji.ui.theme.MajiCard
 import com.maji.ui.theme.MajiGlassButton
 import com.maji.ui.theme.MajiPrimaryButton
+import com.maji.ui.theme.MajiRow
 import com.maji.ui.theme.MajiTheme
 import com.maji.ui.theme.MinTouch
 import com.maji.ui.theme.MoodLightColors
@@ -130,7 +132,8 @@ fun ProfileEditScreen(
     onSave: (Profile) -> Unit,
     onDelete: () -> Unit,
     onCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    currentSeason: Season = ProfileRules.seasonFor(java.time.LocalDate.now().monthValue)
 ) {
     val customIndex = presets.size  // 마지막 선택지 = "직접 입력"
 
@@ -195,6 +198,30 @@ fun ProfileEditScreen(
             }
         }
     }
+    // 계절별 자리: 한 사람에 겨울·여름 값이 따로 있어요. 날짜로 지금 계절을 골라 쓰고, 다른 계절은 덮어쓰지 않아요.
+    // 보기만 해요. 맞추는 건 차 안에서(자리 설정 화면, 함께 가는 중 자리 조절) 하고, 내릴 때 그 계절 칸에 기억돼요
+    val seasonField: @Composable ColumnScope.() -> Unit = {
+        val p = initial
+        if (p != null) {
+            Label("계절별 자리 · 겨울·여름 따로 기억해요")
+            MajiCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(vertical = 8.dp)) {
+                    listOf(Season.WINTER, Season.SUMMER).sortedBy { if (it == currentSeason) 0 else 1 }.forEach { s ->
+                        val now = if (s == currentSeason) " · 지금" else ""
+                        MajiRow(seasonName(s) + now, seasonValueText(ProfileRules.climateFor(p, s)) ?: "아직 안 맞춤")
+                    }
+                    MajiRow("시트 · 계절 상관없이", seatText(p.seatMoveMs))
+                    val missing = listOf(Season.WINTER, Season.SUMMER).filter { ProfileRules.climateFor(p, it) == null }
+                    if (missing.isNotEmpty()) {
+                        SubText(
+                            missing.joinToString(", ") { seasonName(it) } + "에 처음 탈 때 차에서 맞춰요",
+                            Modifier.padding(start = 32.dp, end = 32.dp, top = 4.dp, bottom = 16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
     val specialField: @Composable ColumnScope.() -> Unit = {
         Label("오늘만의 인사 (선택) · 다음 맞이 한 번만 나와요")
         InputField(special, { if (it.length <= 40) special = it }, "예: 생일 축하해!", enabled = !locked)
@@ -232,7 +259,7 @@ fun ProfileEditScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Headline(title)
-                        SubText(if (locked) "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 해 주세요." else "열선·온도·시트는 처음 맞이할 때 차에서 맞춰요")
+                        SubText(if (locked) "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 해 주세요." else "열선·온도·시트는 차에서 맞추고, 내릴 때 기억해요")
                     }
                     if (wide) {
                         MajiGlassButton("닫기", onClick = onCancel, modifier = Modifier.width(200.dp))
@@ -243,7 +270,7 @@ fun ProfileEditScreen(
                 if (wide) {
                     Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            nameField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
+                            nameField(); Spacer(Modifier.height(8.dp)); seasonField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
                             if (initial != null) DeleteLink(enabled = !locked) { askDelete = true }
                         }
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -253,7 +280,7 @@ fun ProfileEditScreen(
                 } else {
                     // 반쪽 창: 위에서 아래로 쌓고 스크롤해요. 인사 목록과 직접 입력은 모두 보여요
                     Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        nameField(); Spacer(Modifier.height(8.dp)); greetingField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
+                        nameField(); Spacer(Modifier.height(8.dp)); seasonField(); Spacer(Modifier.height(8.dp)); greetingField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
                         if (initial != null) DeleteLink(enabled = !locked) { askDelete = true }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {

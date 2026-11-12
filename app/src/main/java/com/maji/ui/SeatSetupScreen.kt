@@ -413,7 +413,6 @@ internal fun Chip(text: String, selected: Boolean, enabled: Boolean, modifier: M
 
 internal fun tempLabel(c: Float): String = String.format(Locale.US, "%.1f℃", c)
 
-private fun seasonName(s: Season): String = if (s == Season.WINTER) "겨울" else "여름"
 
 // ───────────── 미리보기 ─────────────
 
