@@ -270,12 +270,14 @@ fun ProfileEditScreen(
                 }
                 if (wide) {
                     Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
+                        // 왼쪽 = 사람과 자리(이름·계절별 자리·무드등), 오른쪽 = 말(인사·오늘만의 인사)과 지우기.
+                        // 왼쪽이 길어져 오늘만의 인사가 화면 밖으로 잘리던 걸, 비어 있던 오른쪽 아래로 옮겼어요
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            nameField(); Spacer(Modifier.height(8.dp)); seasonField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
-                            if (initial != null) DeleteLink(enabled = !locked) { askDelete = true }
+                            nameField(); Spacer(Modifier.height(8.dp)); seasonField(); Spacer(Modifier.height(8.dp)); lightField()
                         }
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            greetingField()
+                            greetingField(); Spacer(Modifier.height(8.dp)); specialField()
+                            if (initial != null) DeleteLink(enabled = !locked) { askDelete = true }
                         }
                     }
                 } else {
