@@ -179,6 +179,10 @@ fun ProgressScreen(
                     SoftAvatar(initial, color, size = 104.dp)
                     Headline(copy.title)
                     copy.subtitle?.let { SubText(it) }
+                    // 가는 중인데 맞출 값이 아직 없으면(처음 맞이·이번 계절 처음) 카드 대신 여기서 한 줄로 알려요
+                    if (step == MajiStep.HEADING && climateRows(climate, profile?.seatMoveMs ?: 0).isEmpty()) {
+                        Text("처음이라 도착하면 ${profileName} 자리를 같이 맞춰요", style = MajiTheme.type.body, color = c.text.copy(alpha = 0.8f))
+                    }
                     // 단계 표시는 맞이 내내 보여요 (지금 단계 위에 그 사람 원)
                     StepTrack(trackIndex(step), color, initial)
                     if (step == MajiStep.PREPARING && !fallback) {
@@ -189,7 +193,7 @@ fun ProgressScreen(
                 content = {
                     when {
                         step == MajiStep.HEADING ->
-                            ValueCard(climateRows(climate, profile?.seatMoveMs ?: 0), caption = "차를 세우면 ${profileName} 자리를 맞춰 둘게요")
+                            ValueCard(climateRows(climate, profile?.seatMoveMs ?: 0), caption = "도착하면 이렇게 맞춰 둘게요")
                         step == MajiStep.PREPARING && fallback ->
                             ValueCard(climateRows(climate), mark = "!", markColor = c.warning)
                         step == MajiStep.PREPARING ->
@@ -236,40 +240,43 @@ fun ProgressScreen(
 @Composable
 private fun FinishedView(copy: ProgressCopy, color: androidx.compose.ui.graphics.Color, initial: String, onDone: () -> Unit) {
     val c = MajiTheme.colors
-    com.maji.ui.theme.MajiBackground(accent = color.copy(alpha = 0.7f)) {
+    // 버튼 없이 잠시 보여 주고 저절로 첫 화면으로 가요 (터치 두 번 → 0번). 아무 데나 누르면 바로 가요
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(FINISHED_SHOW_MS)
+        onDone()
+    }
+    com.maji.ui.theme.MajiBackground(
+        accent = color.copy(alpha = 0.7f),
+        modifier = Modifier.clickable(
+            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+            indication = null,
+            onClick = onDone
+        )
+    ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth.value >= WIDE_MIN_DP
-            val message: @Composable () -> Unit = {
-                Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Box(Modifier.size(112.dp).clip(CircleShape).background(c.success.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                        Text("✓", style = MajiTheme.type.headline.copy(fontSize = 56.sp), color = c.success)
-                    }
-                    Text(copy.title, style = MajiTheme.type.headline.copy(fontSize = 60.sp, lineHeight = 76.sp), color = c.text)
-                    copy.subtitle?.let { Text(it, style = MajiTheme.type.body, color = c.text.copy(alpha = 0.75f)) }
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = if (wide) 72.dp else 44.dp, vertical = 56.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                Spacer(Modifier.weight(0.4f))
+                Box(Modifier.size(112.dp).clip(CircleShape).background(c.success.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                    Text("✓", style = MajiTheme.type.headline.copy(fontSize = 56.sp), color = c.success)
+                }
+                Text(copy.title, style = MajiTheme.type.headline.copy(fontSize = 60.sp, lineHeight = 76.sp), color = c.text)
+                copy.subtitle?.let { Text(it, style = MajiTheme.type.body, color = c.text.copy(alpha = 0.75f)) }
+                Box(Modifier.then(if (wide) Modifier.widthIn(max = 640.dp) else Modifier.fillMaxWidth())) {
                     StepTrack(current = 4, personColor = color, initial = initial)
                 }
-            }
-            if (wide) {
-                // 왼쪽 = 끝맺는 문구, 오른쪽 = 큰 "처음으로" 타일. 두 덩어리의 세로 가운데를 맞춰요
-                Column(Modifier.fillMaxSize().padding(horizontal = 72.dp, vertical = 56.dp)) {
-                    Spacer(Modifier.weight(0.4f))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(96.dp)) {
-                        Box(Modifier.weight(1f)) { message() }
-                        ActionTile("처음으로", "다음엔 누구를 맞이할까요?", onDone, color, Modifier.width(460.dp).height(300.dp))
-                    }
-                    Spacer(Modifier.weight(0.6f))
-                }
-            } else {
-                Column(Modifier.fillMaxSize().padding(horizontal = 44.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(32.dp)) {
-                    Spacer(Modifier.weight(0.4f))
-                    message()
-                    Spacer(Modifier.weight(0.6f))
-                    ActionTile("처음으로", "다음엔 누구를 맞이할까요?", onDone, color, Modifier.fillMaxWidth().height(200.dp))
-                }
+                Spacer(Modifier.weight(0.6f))
+                SubText("잠시 뒤 첫 화면으로 돌아가요 · 누르면 바로 가요")
             }
         }
     }
 }
+
+/** 완료 화면을 보여 주는 시간. 끝인사를 읽기엔 충분하고 기다린다고 느끼진 않을 만큼 */
+private const val FINISHED_SHOW_MS = 4_000L
 
 /**
  * 화면에 버튼이 하나뿐일 때 쓰는 큰 타일 ("다 내렸어요", "처음으로").
