@@ -137,7 +137,7 @@ fun SeatSetupScreen(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 계절은 날짜로 정해져요 (흐름도 seasonFor(오늘)로 씀). 고르는 버튼은 뺐어요 (원영 의견, #111)
+    // 계절은 날짜로 정해져요 (흐름도 seasonFor(오늘)로 씀). 고르는 버튼은 뺐어요 (D 의견, #111)
     val season = initialSeason
     val saved = ProfileRules.climateFor(profile, season)
 

@@ -81,7 +81,7 @@ private fun MajiApp(themeSwitch: @Composable (Modifier) -> Unit) {
     var screen by remember { mutableStateOf<AppScreen>(AppScreen.Home) }
     var showDone by remember { mutableStateOf(false) }  // "다 내렸어요"로 끝났으면 완료 화면을 보여 줘요
 
-    // 자리 설정 화면(#46)에 쓰는 차 상태. 나경 신호 값을 기억해 둬요.
+    // 자리 설정 화면(#46)에 쓰는 차 상태. A 신호 값을 기억해 둬요.
     var isPark by remember { mutableStateOf(false) }
     var doorOpen by remember { mutableStateOf(false) }
     var currentHeat by remember { mutableStateOf<Int?>(null) }
@@ -130,9 +130,9 @@ private fun MajiApp(themeSwitch: @Composable (Modifier) -> Unit) {
         }
     }
 
-    // 자리 설정 화면: 맞이 중이고, 조수석 문이 닫혀 있고, 아직 P단이 아니고, 오늘 계절 값이 없을 때 (원영 요청)
+    // 자리 설정 화면: 맞이 중이고, 조수석 문이 닫혀 있고, 아직 P단이 아니고, 오늘 계절 값이 없을 때 (D 요청)
     val active = step != MajiStep.IDLE && step != MajiStep.FINISHED
-    // 자리 설정 화면: 조건은 SeatSetupRules.needsSeatSetup에 있어요 (원영 답변 반영: 정차 중에 띄움)
+    // 자리 설정 화면: 조건은 SeatSetupRules.needsSeatSetup에 있어요 (D 답변 반영: 정차 중에 띄움)
     val seatSetupProfile = flow.profile.takeIf {
         it != null && needsSeatSetup(
             active = active,

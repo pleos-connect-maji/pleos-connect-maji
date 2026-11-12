@@ -25,7 +25,7 @@ data class FlowSnapshotEntity(
     val savedAtMillis: Long,
     val learnedHeat: Int?,
     val learnedTemp: Float?,
-    val seatMovedMs: Int?,  // version 2에서 추가 (#26, 근희 #86)
+    val seatMovedMs: Int?,  // version 2에서 추가 (#26, B #86)
     val startTemp: Float?   // version 3에서 추가 (#26): 맞이 시작 때 알던 온도
 )
 

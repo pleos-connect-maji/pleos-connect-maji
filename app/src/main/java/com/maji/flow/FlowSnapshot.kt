@@ -7,11 +7,11 @@ import com.maji.contract.Season
 
 // 맞이 상태를 한 번에 담은 것 (#26). 앱을 다시 켰을 때 되살리는 데 써요.
 // 탑승 중 바뀐 열선·온도(학습 값)도 담아서, 복원 후 끝낼 때 같은 탑승자에게 쌓여요 (팀 결정: 학습 값 저장).
-// 시트 이동 기록(seatMovedMs)도 담아요. 근희 B가 기록하고, C가 여기 저장해요 (#86, 설계 문서 8.7).
+// 시트 이동 기록(seatMovedMs)도 담아요. B가 기록하고, C가 여기 저장해요 (#86, 설계 문서 8.7).
 data class FlowSnapshot(
     val step: MajiStep,
     val profileId: Long,
-    val season: Season,              // 맞이를 시작할 때 정한 계절 (원영 답변)
+    val season: Season,              // 맞이를 시작할 때 정한 계절 (D 답변)
     val savedState: PassengerState?, // 바꾸기 전 조수석 상태 (하차·취소 때 되돌림)
     val preparedClimate: Climate?,   // 준비 때 보낸 값 (학습 기준)
     val savedAtMillis: Long,

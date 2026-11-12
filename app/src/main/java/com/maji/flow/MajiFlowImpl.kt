@@ -51,7 +51,7 @@ class MajiFlowImpl(
     private var prepareFinished = false
 
     init {
-        // 시트 이동 기록이 바뀌면 저장해요 (#26, 근희 #86). 맞이 중일 때만 저장해요 (끝난 뒤에는 저장 기록을 다시 만들지 않아요)
+        // 시트 이동 기록이 바뀌면 저장해요 (#26, B #86). 맞이 중일 때만 저장해요 (끝난 뒤에는 저장 기록을 다시 만들지 않아요)
         control.setOnSeatMovedChanged { if (isInProgress()) persist() }
     }
 
@@ -268,8 +268,8 @@ class MajiFlowImpl(
     }
 
     // 앱을 다시 켰을 때 저장된 맞이를 되살려요 (#26). 하루가 지났으면 버려요.
-    // 소리(인사, 안내음, 노래)는 다시 재생하지 않아요 (이현 답변).
-    // 탑승자 정보는 DB 최신 값을 써요. 없으면 null로 두고, 학습만 건너뛰어요 (원영 답변).
+    // 소리(인사, 안내음, 노래)는 다시 재생하지 않아요 (E 답변).
+    // 탑승자 정보는 DB 최신 값을 써요. 없으면 null로 두고, 학습만 건너뛰어요 (D 답변).
     suspend fun restoreSavedIfFresh(): Boolean {
         val store = stateStore ?: return false
         if (current != MajiStep.IDLE) return false
@@ -288,7 +288,7 @@ class MajiFlowImpl(
         preparedClimate = snapshot.preparedClimate
         changedHeat = snapshot.learnedHeat  // 저장된 학습 값을 이어받아요 (#26)
         changedTemperature = snapshot.learnedTemp
-        // 시트 기록은 restore() 전에 B에 돌려줘야 시트가 원위치로 돌아가요 (근희 안내)
+        // 시트 기록은 restore() 전에 B에 돌려줘야 시트가 원위치로 돌아가요 (B 안내)
         snapshot.seatMovedMs?.let { control.restoreSeatMovedMs(it) }
         // 저장 기록을 다시 쓰지 않도록, 단계만 바꾸고 알려 줘요
         current = snapshot.step
