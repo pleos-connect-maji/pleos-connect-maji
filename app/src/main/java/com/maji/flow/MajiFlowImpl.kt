@@ -42,6 +42,7 @@ class MajiFlowImpl(
     private var changedHeat: Int? = null
     private var changedTemperature: Float? = null
     private var currentSeason: Season? = null  // 맞이를 시작할 때 정한 계절 (학습과 복원에 씀)
+    private var finishing = false  // 내릴 때 무드등 읽기·복구가 끝나기 전엔 새 맞이를 받지 않아요 (#112 리뷰)
     private var seatAtBoarding: Int? = null  // 문이 열려 시트를 멈춘 순간의 시트 기록. 내릴 때와 다르면 탄 뒤 움직인 것 (#111)
 
     init {
@@ -59,6 +60,7 @@ class MajiFlowImpl(
     // 맞이 시작 화면에서 탑승자 버튼
     override fun start(profile: Profile) {
         if (current != MajiStep.IDLE && current != MajiStep.FINISHED) return  // 맞이 중이면 무시
+        if (finishing) return  // 지난 맞이 복구가 아직 안 끝났어요 (최대 2초)
         currentProfile = profile
         isPark = false
         savedState = null
@@ -170,7 +172,9 @@ class MajiFlowImpl(
         fun restoreNow() { state?.let { control.restore(it) } }
         if (!learn || p == null) return restoreNow()
         if (readLight) {
+            finishing = true
             control.readAmbientLight { light ->
+                finishing = false
                 learnLast(p, season, climate, seatMs, light)
                 restoreNow()
             }
