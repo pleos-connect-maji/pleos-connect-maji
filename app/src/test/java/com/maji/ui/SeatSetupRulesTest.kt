@@ -4,7 +4,7 @@ import com.maji.contract.Climate
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-// 자리 설정 화면을 띄우는 조건 (#46). 원영과 조건을 정하기 전까지는 지금 규칙을 고정해 둬요.
+// 자리 설정 화면을 띄우는 조건 (#46). D와 조건을 정하기 전까지는 지금 규칙을 고정해 둬요.
 class SeatSetupRulesTest {
 
     private val noClimate: Climate? = null
