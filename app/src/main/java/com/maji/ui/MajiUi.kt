@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.remember
 import com.maji.ui.theme.MajiGlassButton
 import com.maji.ui.theme.MajiPrimaryButton
@@ -58,6 +60,29 @@ fun heatRow(level: Int): Pair<String, String> = when {
     else -> "열선" to "${level}단"
 }
 
+/** 열선 상태 (#111): 끔 / 열선 / 통풍. 차 값은 -3..3 하나지만 화면에서는 나눠서 골라요 */
+enum class HeatMode(val label: String) {
+    OFF("끔"), HEAT("열선"), VENT("통풍");
+
+    companion object {
+        fun of(level: Int): HeatMode = when {
+            level > 0 -> HEAT
+            level < 0 -> VENT
+            else -> OFF
+        }
+
+        /** 모드와 세기로 차 값을 만들어요. 끔에서 열선·통풍을 고르면 1단부터 */
+        fun levelOf(mode: HeatMode, strength: Int): Int = when (mode) {
+            OFF -> 0
+            HEAT -> strength.coerceIn(1, 3)
+            VENT -> -strength.coerceIn(1, 3)
+        }
+    }
+}
+
+/** 2 → "열선 2단", -1 → "통풍 1단", 0 → "끔" */
+fun heatText(level: Int): String = heatRow(level).let { (k, v) -> if (v == "끔") "끔" else "$k $v" }
+
 /** 22.0 → "22℃", 22.5 → "22.5℃" */
 fun tempText(celsius: Float): String =
     if (celsius % 1f == 0f) "${celsius.toInt()}℃" else String.format(Locale.US, "%.1f℃", celsius)
@@ -95,7 +120,8 @@ fun MajiScaffold(
     modifier: Modifier = Modifier,
     top: @Composable ColumnScope.() -> Unit,
     content: @Composable ColumnScope.() -> Unit = {},
-    actions: (@Composable RowScope.() -> Unit)? = null
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    scrollContent: Boolean = false  // 반쪽 창에서 내용이 길면(자리 조절 #111) 위·내용만 스크롤, 버튼은 맨 아래 고정
 ) {
     MajiBackground(modifier = modifier, accent = accent) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -116,6 +142,16 @@ fun MajiScaffold(
                         }
                     }
                     Spacer(Modifier.weight(0.6f))
+                }
+            } else if (scrollContent) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 44.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp), content = top)
+                        content()
+                    }
+                    if (actions != null) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), content = actions)
+                    }
                 }
             } else {
                 Column(Modifier.fillMaxSize().padding(horizontal = 44.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {

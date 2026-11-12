@@ -323,7 +323,7 @@ private fun GreetingOption(text: String, selected: Boolean, enabled: Boolean, on
 
 /** 무드등 색 하나: 원 + 이름. 고른 색은 테두리 고리 */
 @Composable
-private fun ColorChoice(label: String, color: Color, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+internal fun ColorChoice(label: String, color: Color, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val c = MajiTheme.colors
     // 누를 때: 회색 네모 물결 대신 원이 살짝 눌렸다가 돌아와요 (손가락 아래에서 바로 반응)
     val interaction = remember { MutableInteractionSource() }

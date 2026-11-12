@@ -59,6 +59,7 @@ import com.maji.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.Locale
+import kotlin.math.abs
 
 // D. 자리 설정 화면 (#46, 리디자인 #109). 탑승자가 탄 뒤 정차 중(P단)에 열선·온도를 맞추고 그 계절에 저장해요.
 // 띄우는 때 (C가 정해요): climateFor(profile, 오늘 계절) == null 일 때
@@ -134,7 +135,8 @@ fun SeatSetupScreen(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var season by remember { mutableStateOf(initialSeason) }
+    // 계절은 날짜로 정해져요 (흐름도 seasonFor(오늘)로 씀). 고르는 버튼은 뺐어요 (원영 의견, #111)
+    val season = initialSeason
     val saved = ProfileRules.climateFor(profile, season)
 
     // 시작 값: 그 계절에 저장된 값 → 없으면 지금 차 상태 → 없으면 기본값
@@ -148,21 +150,6 @@ fun SeatSetupScreen(
     LaunchedEffect(currentHeat) { currentHeat?.let { heat = it } }
     // 그대로 두기 중에도 지금 차 온도는 기억해 둬요 → 그 상태에서 + 누르면 지금 온도 + 0.5부터
     LaunchedEffect(currentTemp) { currentTemp?.let { temp = it } }
-
-    // 계절을 바꾸면 그 계절에 저장된 값이 있을 때만 불러와요
-    fun selectSeason(next: Season) {
-        season = next
-        ProfileRules.climateFor(profile, next)?.let { c ->
-            c.seatHeat?.let { heat = it }
-            val t = c.temperature
-            if (t == null) {
-                keepTemp = true
-            } else {
-                keepTemp = false
-                temp = t
-            }
-        }
-    }
 
     val firstTime = profile.winter == null && profile.summer == null
     val seasonChanged = !firstTime && ProfileRules.climateFor(profile, initialSeason) == null
@@ -179,15 +166,11 @@ fun SeatSetupScreen(
     val c = MajiTheme.colors
 
     val heatCard: @Composable (Modifier) -> Unit = { m ->
-        val (label, value) = heatRow(heat)
-        SettingCard(
-            title = "열선·통풍",
-            now = "지금 차 " + (currentHeat?.let { heatRow(it).let { (k, v) -> if (v == "끔") "끔" else "$k $v" } } ?: "모름"),
-            value = if (value == "끔") "끔" else "$label $value",
-            canDown = !locked && heat > ProfileRules.HEAT_MIN,
-            canUp = !locked && heat < ProfileRules.HEAT_MAX,
-            onDown = { heat -= 1; onHeatChange(heat) },
-            onUp = { heat += 1; onHeatChange(heat) },
+        HeatCard(
+            level = heat,
+            now = "지금 차 " + (currentHeat?.let { heatText(it) } ?: "모름"),
+            enabled = !locked,
+            onChange = { heat = it; onHeatChange(it) },
             modifier = m
         )
     }
@@ -249,12 +232,8 @@ fun SeatSetupScreen(
                 if (wide) Spacer(Modifier.weight(0.4f))
                 Headline(title)
                 SubText(if (locked) "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 해 주세요." else subtitle)
-                // ── 계절
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Chip("겨울", selected = season == Season.WINTER, enabled = !locked) { selectSeason(Season.WINTER) }
-                    Chip("여름", selected = season == Season.SUMMER, enabled = !locked) { selectSeason(Season.SUMMER) }
-                    SubText("고른 계절에 저장돼요", Modifier.padding(start = 8.dp))
-                }
+                // 계절은 고르지 않고 알려만 줘요
+                SubText("지금은 ${seasonName(season)}이라 ${seasonName(season)} 자리로 저장돼요")
                 // ── 열선 | 온도 | 시트 (넓은 창은 나란히, 반쪽 창은 위아래)
                 if (wide) {
                     // 카드 세 장은 내용 높이에 맞추고 서로 같은 높이로 (화면 높이를 꽉 채우면 가운데가 비어 보여요)
@@ -290,7 +269,7 @@ fun SeatSetupScreen(
 
 /** 누르는 순간 onPress, 손을 떼면(또는 화면이 닫히면) onRelease. 유리 캡슐 모양 */
 @Composable
-private fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRelease: () -> Unit, modifier: Modifier = Modifier) {
+internal fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRelease: () -> Unit, modifier: Modifier = Modifier) {
     val press by rememberUpdatedState(onPress)
     val release by rememberUpdatedState(onRelease)
     var pressed by remember { mutableStateOf(false) }
@@ -324,7 +303,7 @@ private fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRe
 
 /** 카드 하나: 제목·지금 차 상태, 가운데 값, [−] [+] */
 @Composable
-private fun SettingCard(
+internal fun SettingCard(
     title: String,
     now: String,
     value: String,
@@ -356,7 +335,7 @@ private fun SettingCard(
 }
 
 @Composable
-private fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
     val c = MajiTheme.colors
     Box(
         Modifier
@@ -371,12 +350,55 @@ private fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * 열선·통풍 카드 (#111). 한 줄 −/+ 로 음수까지 내려가면 통풍이 되는 걸 알 수가 없어서
+ * [끔] [열선] [통풍]을 먼저 고르고, 세기(1~3단)는 따로 −/+ 로 맞춰요.
+ */
+@Composable
+internal fun HeatCard(level: Int, now: String?, enabled: Boolean, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val c = MajiTheme.colors
+    val mode = HeatMode.of(level)
+    val strength = abs(level)
+    MajiCard(modifier) {
+        Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SubText(if (now != null) "열선·통풍 · $now" else "열선·통풍")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HeatMode.entries.forEach { m ->
+                    Chip(m.label, selected = mode == m, enabled = enabled, modifier = Modifier.weight(1f)) {
+                        onChange(HeatMode.levelOf(m, strength))
+                    }
+                }
+            }
+            HeatStrength(level, enabled, onChange)
+        }
+    }
+}
+
+/** 세기 [−] 2단 [+]. 끔이면 숫자 대신 "끔"이고 버튼은 쉬어요 */
+@Composable
+internal fun HeatStrength(level: Int, enabled: Boolean, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val c = MajiTheme.colors
+    val mode = HeatMode.of(level)
+    val strength = abs(level)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        StepButton("−", enabled && mode != HeatMode.OFF && strength > 1) { onChange(HeatMode.levelOf(mode, strength - 1)) }
+        Text(
+            text = if (mode == HeatMode.OFF) "끔" else "${strength}단",
+            style = MajiTheme.type.title.copy(fontFeatureSettings = "tnum"),
+            color = c.text.copy(alpha = if (mode == HeatMode.OFF) 0.5f else 1f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f).widthIn(min = 96.dp)
+        )
+        StepButton("+", enabled && mode != HeatMode.OFF && strength < ProfileRules.HEAT_MAX) { onChange(HeatMode.levelOf(mode, strength + 1)) }
+    }
+}
+
 /** 고른 것은 꽉 찬 캡슐, 안 고른 것은 유리 캡슐 */
 @Composable
-private fun Chip(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+internal fun Chip(text: String, selected: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = MajiTheme.colors
     Box(
-        Modifier
+        modifier
             .heightIn(min = MinTouch)
             .alpha(if (enabled) 1f else 0.4f)
             .clickable(enabled = enabled, onClick = onClick)
@@ -389,7 +411,7 @@ private fun Chip(text: String, selected: Boolean, enabled: Boolean, onClick: () 
     }
 }
 
-private fun tempLabel(c: Float): String = String.format(Locale.US, "%.1f℃", c)
+internal fun tempLabel(c: Float): String = String.format(Locale.US, "%.1f℃", c)
 
 private fun seasonName(s: Season): String = if (s == Season.WINTER) "겨울" else "여름"
 

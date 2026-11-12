@@ -53,6 +53,18 @@ class ProgressMessageTest {
     }
 
     @Test
+    fun `열선·통풍은 모드와 세기로 나눠서 골라요`() {
+        assertEquals(HeatMode.VENT, HeatMode.of(-2))
+        assertEquals(HeatMode.OFF, HeatMode.of(0))
+        assertEquals(1, HeatMode.levelOf(HeatMode.HEAT, 0))    // 끔에서 열선을 고르면 1단부터
+        assertEquals(-2, HeatMode.levelOf(HeatMode.VENT, 2))   // 열선 2단에서 통풍으로 바꾸면 세기는 그대로
+        assertEquals(0, HeatMode.levelOf(HeatMode.OFF, 3))
+        assertEquals(3, HeatMode.levelOf(HeatMode.HEAT, 5))    // 범위 밖은 3단까지
+        assertEquals("통풍 1단", heatText(-1))
+        assertEquals("끔", heatText(0))
+    }
+
+    @Test
     fun `온도와 시트 표시`() {
         assertEquals("22℃", tempText(22f))
         assertEquals("22.5℃", tempText(22.5f))

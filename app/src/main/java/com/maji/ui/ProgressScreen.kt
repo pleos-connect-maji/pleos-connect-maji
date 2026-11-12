@@ -36,7 +36,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maji.R
+import com.maji.contract.AmbientLight
 import com.maji.contract.Climate
+import com.maji.contract.VehicleControl
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.toArgb
 import com.maji.contract.MajiFlow
 import com.maji.contract.MajiStep
 import com.maji.contract.Profile
@@ -102,7 +106,10 @@ fun ProgressRoute(
     controlAvailable: Boolean,
     modifier: Modifier = Modifier,
     onFinished: () -> Unit = {},
-    onDone: () -> Unit = {}
+    onDone: () -> Unit = {},
+    control: VehicleControl? = null,  // 함께 가는 동안 자리 조절 (#111). 흐름과 같은 인스턴스여야 시트 기록이 하나로 유지돼요
+    currentHeat: Int? = null,         // 지금 차 값 (A 신호). 차 버튼으로 바꿔도 패널이 따라가요
+    currentTemp: Float? = null
 ) {
     var step by remember { mutableStateOf(flow.step) }
     LaunchedEffect(flow) {
@@ -111,14 +118,46 @@ fun ProgressRoute(
     val profile = flow.profile
     val climate = profile?.let { profiles.climateFor(it, profiles.seasonFor(LocalDate.now().monthValue)) }
     val presets = stringArrayResource(R.array.greeting_presets).toList()
+
+    // ── 자리 조절 패널 상태 (#111) ──
+    var heat by remember { mutableIntStateOf(currentHeat ?: climate?.seatHeat ?: 0) }
+    LaunchedEffect(currentHeat) { currentHeat?.let { heat = it } }
+    var temp by remember { mutableStateOf(currentTemp ?: climate?.temperature) }
+    LaunchedEffect(currentTemp) { currentTemp?.let { temp = it } }
+    var seatMs by remember { mutableIntStateOf(control?.seatMovedMs() ?: 0) }
+    var light by remember(profile?.id) {
+        mutableStateOf(AmbientLight(profile?.lightColor ?: MoodLightColors.Default.toArgb(), profile?.lightBrightness ?: 30))
+    }
+    // 함께 가는 길이 시작되면 그때의 시트 기록부터 보여 줘요 (준비 중에 움직인 만큼 들어 있어요)
+    LaunchedEffect(step) { if (step == MajiStep.RIDING_HOME) control?.let { seatMs = it.seatMovedMs() } }
+
+    val rideAdjust: (@Composable () -> Unit)? = if (control != null && controlAvailable) {
+        {
+            RideAdjustPanel(
+                heat = heat,
+                temperature = temp,
+                seatMs = seatMs,
+                seatEnabled = !drivingRestricted,
+                light = light,
+                onHeat = { heat = it; control.setSeatHeat(it) },
+                onTemperature = { temp = it; control.setTemperature(it) },
+                onSeatStart = { control.startSeatMove(it) },
+                onSeatStop = { control.stopSeatMove(); seatMs = control.seatMovedMs() },
+                onLight = { light = it; control.setAmbientLight(it) }
+            )
+        }
+    } else null
+
     ProgressScreen(
         step = step,
         profileName = profile?.name.orEmpty(),
         drivingRestricted = drivingRestricted,
         fallback = !controlAvailable,
         climate = climate,
-        profile = profile,
+        // 고른 무드등 색이 화면 분위기 색에도 바로 보여요
+        profile = profile?.copy(lightColor = light.color, lightBrightness = light.brightness),
         greeting = profile?.let { GreetingRules.textFor(it, presets) },
+        rideAdjust = rideAdjust,
         onFinish = { flow.finish(); onFinished() },
         onCancel = { flow.cancel() },
         onDone = onDone,
@@ -139,7 +178,8 @@ fun ProgressScreen(
     climate: Climate? = null,
     profile: Profile? = null,
     greeting: String? = null,
-    onDone: () -> Unit = {}
+    onDone: () -> Unit = {},
+    rideAdjust: (@Composable () -> Unit)? = null
 ) {
     val c = MajiTheme.colors
     val color = MoodLightColors.of(profile?.lightColor)
@@ -199,6 +239,10 @@ fun ProgressScreen(
                             ValueCard(climateRows(climate), mark = "!", markColor = c.warning)
                         step == MajiStep.PREPARING ->
                             ValueCard(climateRows(climate, profile?.seatMoveMs ?: 0))
+                        step == MajiStep.RIDING_HOME && rideAdjust != null -> {
+                            rideAdjust()
+                            if (drivingRestricted) SubText("차를 세우면 ‘다 내렸어요’ 버튼이 나와요")
+                        }
                         step == MajiStep.RIDING_HOME && drivingRestricted -> {
                             val light = MoodLightColors.all.firstOrNull { it.second == color }?.first
                             ValueCard(buildList {
@@ -211,13 +255,22 @@ fun ProgressScreen(
                 },
                 actions = when {
                     step == MajiStep.RIDING_HOME && !drivingRestricted && !askFinish -> {
-                        { ActionTile("다 내렸어요", "자리를 원래대로 돌려요", { askFinish = true }, color, if (wideTile) Modifier.width(460.dp).height(280.dp) else Modifier.weight(1f).height(200.dp)) }
+                        {
+                            // 자리 조절 패널 아래에서는 패널 폭에 맞춰 낮게
+                            val m = when {
+                                rideAdjust != null -> Modifier.weight(1f).height(if (wideTile) 200.dp else 180.dp)
+                                wideTile -> Modifier.width(460.dp).height(280.dp)
+                                else -> Modifier.weight(1f).height(200.dp)
+                            }
+                            ActionTile("다 내렸어요", "자리를 원래대로 돌려요", { askFinish = true }, color, m)
+                        }
                     }
                     (step == MajiStep.HEADING || step == MajiStep.PREPARING) && canCancel -> {
                         { MajiGlassButton("맞이 그만하기", onClick = onCancel, modifier = Modifier.weight(1f)) }
                     }
                     else -> null
-                }
+                },
+                scrollContent = step == MajiStep.RIDING_HOME && rideAdjust != null
             )
         }
 
