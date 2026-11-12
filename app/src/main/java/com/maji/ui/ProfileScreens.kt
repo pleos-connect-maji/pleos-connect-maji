@@ -150,7 +150,7 @@ fun ProfileEditScreen(
         mutableStateOf(initial?.greetingText?.takeIf { !presets.contains(it) } ?: "")
     }
     var special by remember { mutableStateOf(initial?.specialGreetingText ?: "") }
-    // 귀갓길 무드등: 지금 저장된 값에서 시작해요 (안 고쳤으면 그대로 둬요)
+    // 함께 출발할 때 켜는 무드등: 지금 저장된 값에서 시작해요 (안 고쳤으면 그대로 둬요)
     var lightColor by remember { mutableStateOf(initial?.lightColor) }
     var brightness by remember { mutableIntStateOf(initial?.lightBrightness ?: 30) }
     var closeWindow by remember { mutableStateOf(initial?.closeWindow ?: true) }
@@ -201,7 +201,7 @@ fun ProfileEditScreen(
         InputField(special, { if (it.length <= 40) special = it }, "예: 생일 축하해!", enabled = !locked)
     }
     val lightField: @Composable ColumnScope.() -> Unit = {
-        Label("귀갓길 무드등")
+        Label("함께 출발할 때 켜는 무드등")
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             MoodLightColors.all.forEach { (label, color) ->
                 ColorChoice(
@@ -219,7 +219,7 @@ fun ProfileEditScreen(
                 Text("$brightness%", style = MajiTheme.type.number, color = MajiTheme.colors.text, modifier = Modifier.width(120.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 SmallStep("+", !locked && brightness < ProfileRules.BRIGHTNESS_MAX) { brightness = (brightness + BRIGHTNESS_STEP).coerceAtMost(ProfileRules.BRIGHTNESS_MAX) }
             }
-            SettingLine("귀갓길에 창문 닫기") {
+            SettingLine("함께 출발하면 창문 닫기") {
                 Toggle(closeWindow, enabled = !locked) { closeWindow = it }
             }
         }

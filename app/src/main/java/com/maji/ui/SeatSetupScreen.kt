@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -242,6 +245,8 @@ fun SeatSetupScreen(
                 Modifier.fillMaxSize().padding(horizontal = if (wide) 72.dp else 44.dp, vertical = 48.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
+                // 넓은 창: 제목·계절·카드·버튼을 한 덩어리로 시각적 중심(위:아래 4:6)에 둬요
+                if (wide) Spacer(Modifier.weight(0.4f))
                 Headline(title)
                 SubText(if (locked) "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 해 주세요." else subtitle)
                 // ── 계절
@@ -252,10 +257,11 @@ fun SeatSetupScreen(
                 }
                 // ── 열선 | 온도 | 시트 (넓은 창은 나란히, 반쪽 창은 위아래)
                 if (wide) {
-                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        heatCard(Modifier.weight(1f))
-                        tempCard(Modifier.weight(1f))
-                        seatCard(Modifier.weight(1f))
+                    // 카드 세 장은 내용 높이에 맞추고 서로 같은 높이로 (화면 높이를 꽉 채우면 가운데가 비어 보여요)
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        heatCard(Modifier.weight(1f).fillMaxHeight())
+                        tempCard(Modifier.weight(1f).fillMaxHeight())
+                        seatCard(Modifier.weight(1f).fillMaxHeight())
                     }
                 } else {
                     // 반쪽 창은 세로가 모자랄 수 있어서 카드만 스크롤해요 (버튼은 항상 보여요)
@@ -275,6 +281,7 @@ fun SeatSetupScreen(
                         modifier = Modifier.weight(1.5f)
                     )
                 }
+                if (wide) Spacer(Modifier.weight(0.6f))
             }
         }
     }

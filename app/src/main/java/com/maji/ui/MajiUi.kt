@@ -83,9 +83,10 @@ fun initialOf(name: String): String = name.trim().take(1).ifEmpty { "?" }
 const val WIDE_MIN_DP = 1100
 
 /**
- * 진행 화면들의 공통 틀.
- * 넓은 창: 왼쪽 = 사람과 상황(top), 오른쪽 = 내용(content), 버튼은 오른쪽 아래.
- * 반쪽 창: top → content → 버튼 순서로 쌓아요.
+ * 진행 화면들의 공통 틀. 운전자가 힐끗 봐도 한눈에 들어오게 내용을 한 덩어리로 모아요.
+ * 덩어리는 화면 가운데보다 살짝 위(시각적 중심, 위:아래 여백 4:6)에 둬요.
+ * 넓은 창: 왼쪽 = 사람과 상황(top), 오른쪽 = 내용(content) + 바로 아래 버튼. 왼쪽(운전석 쪽)부터 읽혀요.
+ * 반쪽 창: top → content 덩어리를 시각적 중심에, 버튼은 손이 닿기 쉬운 맨 아래.
  */
 @Composable
 fun MajiScaffold(
@@ -99,22 +100,27 @@ fun MajiScaffold(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth.value >= WIDE_MIN_DP
             if (wide) {
-                Row(Modifier.fillMaxSize().padding(horizontal = 72.dp, vertical = 64.dp), horizontalArrangement = Arrangement.spacedBy(64.dp)) {
-                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(16.dp), content = top)
-                    Column(Modifier.weight(1.08f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                        content()
-                        if (actions != null) {
-                            Spacer(Modifier.weight(1f))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), content = actions)
+                Column(Modifier.fillMaxSize().padding(horizontal = 72.dp, vertical = 56.dp)) {
+                    Spacer(Modifier.weight(0.4f))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(64.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp), content = top)
+                        Column(Modifier.weight(1.08f), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                            content()
+                            if (actions != null) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), content = actions)
+                            }
                         }
                     }
+                    Spacer(Modifier.weight(0.6f))
                 }
             } else {
                 Column(Modifier.fillMaxSize().padding(horizontal = 44.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Spacer(Modifier.weight(0.4f))
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp), content = top)
                     content()
+                    Spacer(Modifier.weight(0.6f))
                     if (actions != null) {
-                        Spacer(Modifier.weight(1f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), content = actions)
                     }
                 }
