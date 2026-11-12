@@ -65,6 +65,15 @@ class ProgressMessageTest {
     }
 
     @Test
+    fun `계절 값 한 줄 표시`() {
+        assertEquals("열선 3단 · 26.5℃", seasonValueText(Climate(seatHeat = 3, temperature = 26.5f)))
+        assertEquals("통풍 1단", seasonValueText(Climate(seatHeat = -1)))
+        assertEquals("열선 끔 · 22℃", seasonValueText(Climate(seatHeat = 0, temperature = 22f)))
+        assertEquals("온도 그대로", seasonValueText(Climate()))
+        assertNull(seasonValueText(null))   // 아직 안 맞춘 계절
+    }
+
+    @Test
     fun `온도와 시트 표시`() {
         assertEquals("22℃", tempText(22f))
         assertEquals("22.5℃", tempText(22.5f))

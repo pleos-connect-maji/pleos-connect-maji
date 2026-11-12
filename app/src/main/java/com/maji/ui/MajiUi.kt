@@ -101,6 +101,17 @@ fun climateRows(climate: Climate?, seatMoveMs: Int = 0): List<Pair<String, Strin
     if (seatMoveMs != 0) add("시트" to seatText(seatMoveMs))
 }
 
+/** 계절 값 한 줄: "열선 3단 · 26.5℃". 아직 안 맞춘 계절이면 null */
+fun seasonValueText(climate: Climate?): String? {
+    if (climate == null) return null
+    return buildList {
+        climate.seatHeat?.let { add(heatText(it).let { t -> if (t == "끔") "열선 끔" else t }) }
+        climate.temperature?.let { add(tempText(it)) }
+    }.ifEmpty { listOf("온도 그대로") }.joinToString(" · ")
+}
+
+fun seasonName(s: com.maji.contract.Season): String = if (s == com.maji.contract.Season.WINTER) "겨울" else "여름"
+
 fun initialOf(name: String): String = name.trim().take(1).ifEmpty { "?" }
 
 // ───────────── 화면 틀 ─────────────

@@ -44,14 +44,15 @@ fun RideAdjustPanel(
     onSeatStart: (forward: Boolean) -> Unit,
     onSeatStop: () -> Unit,
     onLight: (AmbientLight) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    season: String? = null        // "겨울" → 어느 계절 칸에 기억되는지 알려 줘요 (열선·온도는 계절마다 따로)
 ) {
     val c = MajiTheme.colors
     MajiCard(modifier.fillMaxWidth()) {
         Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("자리 조절", style = MajiTheme.type.body.copy(fontWeight = FontWeight.SemiBold), color = c.text)
-                SubText("타는 동안 바꿔도 돼요 · 내릴 때 값을 기억해요")
+                SubText(if (season != null) "타는 동안 바꿔도 돼요 · 내릴 때 $season 자리로 기억해요" else "타는 동안 바꿔도 돼요 · 내릴 때 값을 기억해요")
             }
 
             // 열선·통풍: [끔][열선][통풍] + 세기
