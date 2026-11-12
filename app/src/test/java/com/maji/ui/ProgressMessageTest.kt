@@ -30,7 +30,8 @@ class ProgressMessageTest {
     fun `함께 가는 길은 주행 중과 정차 중이 다르다`() {
         assertEquals(ProgressCopy("엄마와\n함께 가는 중", "엄마 무드등을 켜고 창문을 닫아요"), progressCopy(MajiStep.RIDING_HOME, "엄마", drivingRestricted = true))
         assertEquals("엄마 무드등을 켜요", progressCopy(MajiStep.RIDING_HOME, "엄마", true, closeWindow = false).subtitle)
-        assertEquals(ProgressCopy("엄마가 다 내리면\n눌러 주세요", "자리를 원래대로 돌려요"), progressCopy(MajiStep.RIDING_HOME, "엄마", drivingRestricted = false))
+        // "자리를 원래대로 돌려요"는 다 내렸어요 타일 안에 있어서 제목 아래에는 없어요
+        assertEquals(ProgressCopy("엄마가 다 내리면\n눌러 주세요", null), progressCopy(MajiStep.RIDING_HOME, "엄마", drivingRestricted = false))
     }
 
     // ───────────── 대체 모드 (#13) ─────────────
