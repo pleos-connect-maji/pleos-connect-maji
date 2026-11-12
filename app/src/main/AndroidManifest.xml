@@ -34,8 +34,12 @@
 
         <!-- uiMode: 차가 낮/밤을 바꿔도(터널 등) 화면을 다시 만들지 않고 색만 바꿔요.
              다시 만들면 차 제어·신호·흐름이 새로 생겨서 맞이 중에 위험해요 (#109) -->
+        <!-- singleTask: 앱 화면은 항상 하나만. 아이콘 말고 다른 경로(다른 앱·알림·adb 등)로 열려도
+             새 화면을 겹쳐 만들지 않아요. 겹치면 화면마다 맞이 흐름·차 신호·차 제어가 따로 생겨서
+             같은 신호에 두 번 반응해요 (에뮬레이터에서 무드등 명령이 두 번 나간 원인, #109) -->
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTask"
             android:configChanges="uiMode"
             android:exported="true">
             <intent-filter>
