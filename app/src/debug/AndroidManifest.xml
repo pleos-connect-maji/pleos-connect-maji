@@ -13,5 +13,9 @@
         <activity
             android:name="com.maji.dev.DevVoiceActivity"
             android:exported="true" />
+        <!-- 맞이 테마 확인 화면 (#107) -->
+        <activity
+            android:name="com.maji.dev.DevThemeActivity"
+            android:exported="true" />
     </application>
 </manifest>
