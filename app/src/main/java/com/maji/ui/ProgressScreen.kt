@@ -128,12 +128,14 @@ fun ProgressRoute(
     var light by remember(profile?.id) {
         mutableStateOf(AmbientLight(profile?.lightColor ?: MoodLightColors.Default.toArgb(), profile?.lightBrightness ?: 30))
     }
-    // 함께 가는 길이 시작되면 그때의 시트 기록부터 보여 줘요 (준비 중에 움직인 만큼 들어 있어요)
-    LaunchedEffect(step) { if (step == MajiStep.RIDING_HOME) control?.let { seatMs = it.seatMovedMs() } }
+    // 탈 때와 함께 가는 길이 시작될 때, 그때의 시트 기록부터 보여 줘요 (준비 중에 움직인 만큼 들어 있어요)
+    LaunchedEffect(step) { if (step == MajiStep.BOARDED || step == MajiStep.RIDING_HOME) control?.let { seatMs = it.seatMovedMs() } }
 
-    val rideAdjust: (@Composable () -> Unit)? = if (control != null && controlAvailable) {
-        {
+    // boarded = 탄 직후(어서 와요) 화면에서 쓸 때 (#113)
+    val rideAdjust: (@Composable (boarded: Boolean) -> Unit)? = if (control != null && controlAvailable) {
+        { boarded ->
             RideAdjustPanel(
+                boarded = boarded,
                 heat = heat,
                 temperature = temp,
                 seatMs = seatMs,
@@ -180,7 +182,7 @@ fun ProgressScreen(
     profile: Profile? = null,
     greeting: String? = null,
     onDone: () -> Unit = {},
-    rideAdjust: (@Composable () -> Unit)? = null
+    rideAdjust: (@Composable (boarded: Boolean) -> Unit)? = null
 ) {
     val c = MajiTheme.colors
     val color = MoodLightColors.of(profile?.lightColor)
@@ -209,8 +211,11 @@ fun ProgressScreen(
                             }
                         }
                     }
+                    // 탄 직후가 시트를 맞추기 가장 좋은 때예요 (시트는 정차 중에만 움직여요, #113)
+                    rideAdjust?.invoke(true)
                     SubText("기어를 D로 바꾸면 함께 출발해요")
-                }
+                },
+                scrollContent = rideAdjust != null
             )
 
             MajiStep.FINISHED -> FinishedView(copy, color, initial, onDone)
@@ -241,7 +246,7 @@ fun ProgressScreen(
                         step == MajiStep.PREPARING ->
                             ValueCard(climateRows(climate, profile?.seatMoveMs ?: 0))
                         step == MajiStep.RIDING_HOME && rideAdjust != null -> {
-                            rideAdjust()
+                            rideAdjust(false)
                             if (drivingRestricted) SubText("차를 세우면 ‘다 내렸어요’ 버튼이 나와요")
                         }
                         step == MajiStep.RIDING_HOME && drivingRestricted -> {

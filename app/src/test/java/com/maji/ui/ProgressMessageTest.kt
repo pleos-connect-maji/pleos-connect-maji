@@ -80,6 +80,8 @@ class ProgressMessageTest {
         assertEquals("앞으로 2.4초", seatText(2400))
         assertEquals("뒤로 0.8초", seatText(-800))
         assertEquals("원래 위치", seatText(0))
+        assertEquals("원래 위치", seatText(30))    // "앞으로 0.0초"로 보이지 않게
+        assertEquals("뒤로 0.1초", seatText(-50))
     }
 
     @Test
