@@ -216,7 +216,6 @@ private fun EmptyHome(drivingRestricted: Boolean, onAdd: () -> Unit, modifier: M
         accent = null,
         modifier = modifier,
         top = {
-            Spacer(Modifier.height(80.dp))
             Box(Modifier.size(104.dp).clip(CircleShape).background(MajiTheme.colors.glass), contentAlignment = Alignment.Center) {
                 Text("+", style = MajiTheme.type.headline, color = MajiTheme.colors.text)
             }

@@ -147,7 +147,6 @@ fun ProgressScreen(
             MajiStep.BOARDED -> MajiScaffold(
                 accent = color,
                 top = {
-                    Spacer(Modifier.height(72.dp))
                     SoftAvatar(initial, color, size = 128.dp)
                     Headline(copy.title)
                     copy.subtitle?.let { SubText(it) }
@@ -168,7 +167,6 @@ fun ProgressScreen(
             MajiStep.FINISHED -> MajiScaffold(
                 accent = color.copy(alpha = 0.6f),
                 top = {
-                    Spacer(Modifier.height(96.dp))
                     Box(Modifier.size(96.dp).clip(CircleShape).background(c.success.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
                         Text("✓", style = MajiTheme.type.headline, color = c.success)
                     }
