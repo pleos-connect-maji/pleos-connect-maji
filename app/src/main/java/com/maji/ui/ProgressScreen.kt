@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,10 +27,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.maji.R
 import com.maji.contract.Climate
 import com.maji.contract.MajiFlow
@@ -150,6 +155,7 @@ fun ProgressScreen(
                     SoftAvatar(initial, color, size = 128.dp)
                     Headline(copy.title)
                     copy.subtitle?.let { SubText(it) }
+                    StepTrack(trackIndex(step), color, initial)
                 },
                 content = {
                     if (greeting != null) {
@@ -164,17 +170,7 @@ fun ProgressScreen(
                 }
             )
 
-            MajiStep.FINISHED -> MajiScaffold(
-                accent = color.copy(alpha = 0.6f),
-                top = {
-                    Box(Modifier.size(96.dp).clip(CircleShape).background(c.success.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                        Text("✓", style = MajiTheme.type.headline, color = c.success)
-                    }
-                    Headline(copy.title)
-                    copy.subtitle?.let { SubText(it) }
-                },
-                actions = { MajiPrimaryButton("처음으로", onClick = onDone, modifier = Modifier.weight(1f)) }
-            )
+            MajiStep.FINISHED -> FinishedView(copy, color, initial, onDone)
 
             else -> MajiScaffold(
                 accent = color,
@@ -182,7 +178,8 @@ fun ProgressScreen(
                     SoftAvatar(initial, color, size = 104.dp)
                     Headline(copy.title)
                     copy.subtitle?.let { SubText(it) }
-                    if (step == MajiStep.HEADING) StepTrack(trackIndex(step), color, initial)
+                    // 단계 표시는 맞이 내내 보여요 (지금 단계 위에 그 사람 원)
+                    StepTrack(trackIndex(step), color, initial)
                     if (step == MajiStep.PREPARING && !fallback) {
                         Spacer(Modifier.height(16.dp))
                         SubText("ⓘ 조수석 문을 열면 시트가 바로 멈춰요")
@@ -229,6 +226,86 @@ fun ProgressScreen(
         }
     }
 }
+
+/**
+ * 완료 화면 (엔드). 내용과 버튼을 한 덩어리로 묶어 시각적 중심에, 운전석 쪽(왼쪽)에 둬요.
+ * 버튼은 문구 바로 아래에 알맞은 크기로 (화면 반대편 끝에 길게 늘어놓지 않아요).
+ * 단계 표시는 네 칸이 다 채워진 모습으로 "다 왔다"를 보여 줘요.
+ */
+@Composable
+private fun FinishedView(copy: ProgressCopy, color: androidx.compose.ui.graphics.Color, initial: String, onDone: () -> Unit) {
+    val c = MajiTheme.colors
+    com.maji.ui.theme.MajiBackground(accent = color.copy(alpha = 0.7f)) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wide = maxWidth.value >= WIDE_MIN_DP
+            val message: @Composable () -> Unit = {
+                Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Box(Modifier.size(112.dp).clip(CircleShape).background(c.success.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                        Text("✓", style = MajiTheme.type.headline.copy(fontSize = 56.sp), color = c.success)
+                    }
+                    Text(copy.title, style = MajiTheme.type.headline.copy(fontSize = 60.sp, lineHeight = 76.sp), color = c.text)
+                    copy.subtitle?.let { Text(it, style = MajiTheme.type.body, color = c.text.copy(alpha = 0.75f)) }
+                    StepTrack(current = 4, personColor = color, initial = initial)
+                }
+            }
+            if (wide) {
+                // 왼쪽 = 끝맺는 문구, 오른쪽 = 큰 "처음으로" 타일. 두 덩어리의 세로 가운데를 맞춰요
+                Column(Modifier.fillMaxSize().padding(horizontal = 72.dp, vertical = 56.dp)) {
+                    Spacer(Modifier.weight(0.4f))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(96.dp)) {
+                        Box(Modifier.weight(1f)) { message() }
+                        HomeTile(onDone, color, Modifier.width(460.dp).height(300.dp))
+                    }
+                    Spacer(Modifier.weight(0.6f))
+                }
+            } else {
+                Column(Modifier.fillMaxSize().padding(horizontal = 44.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(32.dp)) {
+                    Spacer(Modifier.weight(0.4f))
+                    message()
+                    Spacer(Modifier.weight(0.6f))
+                    HomeTile(onDone, color, Modifier.fillMaxWidth().height(200.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 완료 화면의 "처음으로" 타일. 가늘고 긴 캡슐 대신 손바닥만 한 스쿼클 타일이라
+ * 운전 중 힐끗 봐도 어디를 누를지 바로 보이고, 손이 대충 가도 맞아요(Android for Cars 큰 터치).
+ * 진한 채움 대신 반투명 유리 + 그 사람 무드등 색 화살표 원이라 화면 분위기와 이어져요.
+ */
+@Composable
+private fun HomeTile(onClick: () -> Unit, accent: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    val c = MajiTheme.colors
+    val shape = SquircleShape(48.dp)
+    Box(
+        modifier
+            .clickable(onClick = onClick)
+            .then(if (c.isDark) Modifier else Modifier.shadow(24.dp, shape, ambientColor = TileShadow, spotColor = TileShadow))
+            .clip(shape)
+            .background(c.glass)
+            .drawWithContent {
+                // 위쪽 옅은 빛으로 유리 두께감
+                drawRect(Brush.verticalGradient(0f to c.glassHighlight.copy(alpha = 0.5f), 0.45f to androidx.compose.ui.graphics.Color.Transparent))
+                drawContent()
+            }
+            .padding(40.dp)
+    ) {
+        Column(Modifier.align(Alignment.TopStart), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("처음으로", style = MajiTheme.type.headline, color = c.text)
+            Text("누구를 맞이할지 고르는 화면", style = MajiTheme.type.caption, color = c.textSub)
+        }
+        Box(
+            Modifier.align(Alignment.BottomEnd).size(88.dp).clip(CircleShape).background(accent),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("→", style = MajiTheme.type.title, color = androidx.compose.ui.graphics.lerp(accent, androidx.compose.ui.graphics.Color.Black, 0.78f))
+        }
+    }
+}
+
+private val TileShadow = androidx.compose.ui.graphics.Color(0x40786E8C)
 
 // ───────────── 미리보기 ─────────────
 

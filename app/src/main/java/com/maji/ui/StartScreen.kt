@@ -72,11 +72,19 @@ fun StartRoute(
     modifier: Modifier = Modifier,
     onAdd: () -> Unit = {}
 ) {
-    val list by produceState(initialValue = emptyList<Profile>(), profiles) {
-        value = profiles.getAll()
+    // 불러오기 전(null)과 "사람이 없음"(빈 목록)을 구분해요.
+    // 홈으로 돌아올 때마다 DB를 읽는 짧은 순간에 다른 화면이 끼어 보이지 않도록,
+    // 마지막으로 읽은 목록을 먼저 보여 주고 새로 읽은 값으로 조용히 바꿔요
+    val list by produceState(initialValue = lastProfiles, profiles) {
+        value = profiles.getAll().also { lastProfiles = it }
+    }
+    val loaded = list
+    if (loaded == null) {
+        MajiBackground(modifier = modifier) {}  // 불러오는 동안은 바탕만
+        return
     }
     StartScreen(
-        profiles = list,
+        profiles = loaded,
         drivingRestricted = drivingRestricted,
         onStart = { flow.start(it) },
         onEdit = onEdit,
@@ -247,6 +255,9 @@ private fun Dots(count: Int, current: Int, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** 마지막으로 읽은 사람 목록 (앱이 켜져 있는 동안만). 홈을 다시 열 때 바로 보여 줘요 */
+private var lastProfiles: List<Profile>? = null
 
 /** 카드 높이: 내용(원·이름·자리·인사·버튼)에 맞춘 고정 높이. 화면 높이를 꽉 채우면 가운데가 비어 보여요 */
 private val CardHeight = 560.dp
