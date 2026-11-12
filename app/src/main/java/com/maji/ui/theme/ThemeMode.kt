@@ -60,10 +60,10 @@ fun ThemeModeSwitch(mode: ThemeMode, onChange: (ThemeMode) -> Unit, modifier: Mo
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .heightIn(min = MinTouch - 8.dp)  // 바깥 여백 4dp×2를 더해 76dp
-                        .clip(CircleShape)
-                        .background(if (on) c.primary else Color.Transparent)
                         .semantics { selected = on }
                         .clickable(role = Role.Tab) { onChange(m) }
+                        .clip(CircleShape)
+                        .background(if (on) c.primary else Color.Transparent)
                         .padding(horizontal = 26.dp)
                 ) {
                     Text(m.label, style = MajiTheme.type.caption, color = if (on) c.onPrimary else c.textSub)
