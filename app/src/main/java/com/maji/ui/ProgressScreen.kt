@@ -73,7 +73,7 @@ fun progressCopy(step: MajiStep, name: String, drivingRestricted: Boolean, fallb
         MajiStep.BOARDED -> ProgressCopy("$name, 어서 와요", if (fallback) null else "자리를 맞춰 뒀어요")
         MajiStep.RIDING_HOME ->
             if (drivingRestricted) ProgressCopy("${josa(name, "과", "와")}\n함께 가는 중", if (closeWindow) "$name 무드등을 켜고 창문을 닫아요" else "$name 무드등을 켜요")
-            else ProgressCopy("${josa(name, "이", "가")} 다 내리면\n눌러 주세요", "자리를 원래대로 돌려요")
+            else ProgressCopy("${josa(name, "이", "가")} 다 내리면\n눌러 주세요", null)  // "자리를 원래대로 돌려요"는 타일 안에
         MajiStep.FINISHED ->
             if (fallback) ProgressCopy("오늘도\n잘 다녀왔어요", "자리는 직접 원래대로 돌려 주세요")
             else ProgressCopy("오늘도\n잘 다녀왔어요", "다음에도 $name 자리를 준비해 둘게요")
@@ -147,7 +147,8 @@ fun ProgressScreen(
     var askFinish by remember { mutableStateOf(false) }  // 다 내렸어요 → 한 번 더 물어봐요
     val canCancel = !drivingRestricted
 
-    Box(modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val wideTile = maxWidth.value >= WIDE_MIN_DP  // 넓은 창이면 타일은 알맞은 크기, 반쪽 창이면 꽉 차게
         when (step) {
             MajiStep.BOARDED -> MajiScaffold(
                 accent = color,
@@ -205,7 +206,7 @@ fun ProgressScreen(
                 },
                 actions = when {
                     step == MajiStep.RIDING_HOME && !drivingRestricted && !askFinish -> {
-                        { MajiPrimaryButton("다 내렸어요", onClick = { askFinish = true }, modifier = Modifier.weight(1f)) }
+                        { ActionTile("다 내렸어요", "자리를 원래대로 돌려요", { askFinish = true }, color, if (wideTile) Modifier.width(460.dp).height(280.dp) else Modifier.weight(1f).height(200.dp)) }
                     }
                     (step == MajiStep.HEADING || step == MajiStep.PREPARING) && canCancel -> {
                         { MajiGlassButton("맞이 그만하기", onClick = onCancel, modifier = Modifier.weight(1f)) }
@@ -254,7 +255,7 @@ private fun FinishedView(copy: ProgressCopy, color: androidx.compose.ui.graphics
                     Spacer(Modifier.weight(0.4f))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(96.dp)) {
                         Box(Modifier.weight(1f)) { message() }
-                        HomeTile(onDone, color, Modifier.width(460.dp).height(300.dp))
+                        ActionTile("처음으로", "다음엔 누구를 맞이할까요?", onDone, color, Modifier.width(460.dp).height(300.dp))
                     }
                     Spacer(Modifier.weight(0.6f))
                 }
@@ -263,7 +264,7 @@ private fun FinishedView(copy: ProgressCopy, color: androidx.compose.ui.graphics
                     Spacer(Modifier.weight(0.4f))
                     message()
                     Spacer(Modifier.weight(0.6f))
-                    HomeTile(onDone, color, Modifier.fillMaxWidth().height(200.dp))
+                    ActionTile("처음으로", "다음엔 누구를 맞이할까요?", onDone, color, Modifier.fillMaxWidth().height(200.dp))
                 }
             }
         }
@@ -271,13 +272,14 @@ private fun FinishedView(copy: ProgressCopy, color: androidx.compose.ui.graphics
 }
 
 /**
- * 완료 화면의 "처음으로" 타일. 가늘고 긴 캡슐 대신 손바닥만 한 스쿼클 타일이라
+ * 화면에 버튼이 하나뿐일 때 쓰는 큰 타일 ("다 내렸어요", "처음으로").
+ * 보조로 같이 있는 버튼(맞이 그만하기 등)은 캡슐 그대로 둬요. 가늘고 긴 캡슐 대신 손바닥만 한 스쿼클 타일이라
  * 운전 중 힐끗 봐도 어디를 누를지 바로 보이고, 손이 대충 가도 맞아요(Android for Cars 큰 터치).
  * 반투명 유리 위로 오른쪽 아래에서 그 사람 무드등 색 빛이 번지고, 그 빛 위에 화살표를 선으로 그려요
  * (딱딱한 동그라미 버튼 대신, 맞이 화면 곳곳의 "빛이 새어 나오는" 느낌과 같게).
  */
 @Composable
-private fun HomeTile(onClick: () -> Unit, accent: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+private fun ActionTile(title: String, subtitle: String, onClick: () -> Unit, accent: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
     val c = MajiTheme.colors
     val shape = SquircleShape(48.dp)
     val arrowColor = androidx.compose.ui.graphics.lerp(accent, androidx.compose.ui.graphics.Color.Black, if (c.isDark) 0.1f else 0.72f)
@@ -304,8 +306,8 @@ private fun HomeTile(onClick: () -> Unit, accent: androidx.compose.ui.graphics.C
             .padding(40.dp)
     ) {
         Column(Modifier.align(Alignment.TopStart), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("처음으로", style = MajiTheme.type.headline, color = c.text)
-            Text("다음엔 누구를 맞이할까요?", style = MajiTheme.type.body, color = c.textSub)
+            Text(title, style = MajiTheme.type.headline, color = c.text)
+            Text(subtitle, style = MajiTheme.type.body, color = c.textSub)
         }
         // 화살표: 글자 대신 둥근 끝 선으로 (가로선 + 꺾쇠)
         androidx.compose.foundation.Canvas(Modifier.align(Alignment.BottomEnd).size(64.dp)) {
