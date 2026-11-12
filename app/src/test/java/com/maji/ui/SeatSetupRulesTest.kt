@@ -16,6 +16,11 @@ class SeatSetupRulesTest {
     }
 
     @Test
+    fun `이미 탔으면 함께 가는 길에 차를 세워도 띄우지 않아요`() {
+        assertEquals(false, needsSeatSetup(active = true, seatSetupDone = false, isPark = true, doorOpen = false, climateToday = noClimate, boarded = true))
+    }
+
+    @Test
     fun `맞이 중이 아니면 띄우지 않아요`() {
         assertEquals(false, needsSeatSetup(active = false, seatSetupDone = false, isPark = false, doorOpen = false, climateToday = noClimate))
     }

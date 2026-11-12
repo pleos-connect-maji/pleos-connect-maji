@@ -24,6 +24,7 @@ data class MajiColors(
     val scrim: Color,            // 시트 뒤 어둡게
     val sheet: Color,            // 확인 시트
     val success: Color,          // 끝남 (Pleos informative_active)
+    val toggleOn: Color,         // 켜진 토글. 민트빛 Pleos 초록 대신 노란기 도는 따뜻한 잎 초록 (흰 손잡이 대비 3.3:1)
     val warning: Color,          // 직접 해야 함 (Pleos informative_negative)
     val pastel: List<Color>      // 바탕 빛: 왼쪽 위, 오른쪽 위, 왼쪽 아래, 오른쪽 아래
 )
@@ -42,6 +43,7 @@ val LightMajiColors = MajiColors(
     scrim = Color(0x47282432),
     sheet = Color(0xEBFFFFFF),
     success = Color(0xFF02A055),      // 흰 바탕 아이콘용으로 한 단계 진하게
+    toggleOn = Color(0xFF4E9E57),
     warning = Color(0xFFE5361A),
     pastel = listOf(
         Color(0xCCCDE4F5),            // 하늘
@@ -65,6 +67,7 @@ val DarkMajiColors = MajiColors(
     scrim = Color(0x80000000),
     sheet = Color(0xFF25242A),
     success = Color(0xFF00E074),
+    toggleOn = Color(0xFF4E9E57),     // 어두운 바탕에서도 5.6:1이라 같은 색
     warning = Color(0xFFFE6A4A),
     pastel = listOf(
         Color(0x21FFBE8C),            // 살구빛

@@ -3,6 +3,7 @@ package com.maji.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -56,6 +57,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.maji.R
 import com.maji.contract.Profile
+import com.maji.contract.Season
 import com.maji.contract.ProfileRepository
 import com.maji.profile.FakeProfileRepository
 import com.maji.profile.ProfileRules
@@ -63,6 +65,7 @@ import com.maji.ui.theme.MajiBackground
 import com.maji.ui.theme.MajiCard
 import com.maji.ui.theme.MajiGlassButton
 import com.maji.ui.theme.MajiPrimaryButton
+import com.maji.ui.theme.MajiRow
 import com.maji.ui.theme.MajiTheme
 import com.maji.ui.theme.MinTouch
 import com.maji.ui.theme.MoodLightColors
@@ -130,7 +133,8 @@ fun ProfileEditScreen(
     onSave: (Profile) -> Unit,
     onDelete: () -> Unit,
     onCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    currentSeason: Season = ProfileRules.seasonFor(java.time.LocalDate.now().monthValue)
 ) {
     val customIndex = presets.size  // 마지막 선택지 = "직접 입력"
 
@@ -195,6 +199,30 @@ fun ProfileEditScreen(
             }
         }
     }
+    // 계절별 자리: 한 사람에 겨울·여름 값이 따로 있어요. 날짜로 지금 계절을 골라 쓰고, 다른 계절은 덮어쓰지 않아요.
+    // 보기만 해요. 맞추는 건 차 안에서(자리 설정 화면, 함께 가는 중 자리 조절) 하고, 내릴 때 그 계절 칸에 기억돼요
+    val seasonField: @Composable ColumnScope.() -> Unit = {
+        val p = initial
+        if (p != null) {
+            Label("계절별 자리 · 겨울·여름 따로 기억해요")
+            MajiCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(vertical = 8.dp)) {
+                    listOf(Season.WINTER, Season.SUMMER).sortedBy { if (it == currentSeason) 0 else 1 }.forEach { s ->
+                        val now = if (s == currentSeason) " · 지금" else ""
+                        MajiRow(seasonName(s) + now, seasonValueText(ProfileRules.climateFor(p, s)) ?: "아직 안 맞춤")
+                    }
+                    MajiRow("시트 · 계절 상관없이", seatText(p.seatMoveMs))
+                    val missing = listOf(Season.WINTER, Season.SUMMER).filter { ProfileRules.climateFor(p, it) == null }
+                    if (missing.isNotEmpty()) {
+                        SubText(
+                            missing.joinToString(", ") { seasonName(it) } + "에 처음 탈 때 차에서 맞춰요",
+                            Modifier.padding(start = 32.dp, end = 32.dp, top = 4.dp, bottom = 16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
     val specialField: @Composable ColumnScope.() -> Unit = {
         Label("오늘만의 인사 (선택) · 다음 맞이 한 번만 나와요")
         InputField(special, { if (it.length <= 40) special = it }, "예: 생일 축하해!", enabled = !locked)
@@ -232,7 +260,7 @@ fun ProfileEditScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Headline(title)
-                        SubText(if (locked) "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 해 주세요." else "열선·온도·시트는 처음 맞이할 때 차에서 맞춰요")
+                        SubText(if (locked) "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 해 주세요." else "열선·온도·시트는 차에서 맞추고, 내릴 때 기억해요")
                     }
                     if (wide) {
                         MajiGlassButton("닫기", onClick = onCancel, modifier = Modifier.width(200.dp))
@@ -242,18 +270,20 @@ fun ProfileEditScreen(
                 }
                 if (wide) {
                     Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
+                        // 왼쪽 = 사람과 자리(이름·계절별 자리·무드등), 오른쪽 = 말(인사·오늘만의 인사)과 지우기.
+                        // 왼쪽이 길어져 오늘만의 인사가 화면 밖으로 잘리던 걸, 비어 있던 오른쪽 아래로 옮겼어요
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            nameField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
-                            if (initial != null) DeleteLink(enabled = !locked) { askDelete = true }
+                            nameField(); Spacer(Modifier.height(8.dp)); seasonField(); Spacer(Modifier.height(8.dp)); lightField()
                         }
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            greetingField()
+                            greetingField(); Spacer(Modifier.height(8.dp)); specialField()
+                            if (initial != null) DeleteLink(enabled = !locked) { askDelete = true }
                         }
                     }
                 } else {
                     // 반쪽 창: 위에서 아래로 쌓고 스크롤해요. 인사 목록과 직접 입력은 모두 보여요
                     Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        nameField(); Spacer(Modifier.height(8.dp)); greetingField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
+                        nameField(); Spacer(Modifier.height(8.dp)); seasonField(); Spacer(Modifier.height(8.dp)); greetingField(); Spacer(Modifier.height(8.dp)); lightField(); Spacer(Modifier.height(8.dp)); specialField()
                         if (initial != null) DeleteLink(enabled = !locked) { askDelete = true }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -323,7 +353,7 @@ private fun GreetingOption(text: String, selected: Boolean, enabled: Boolean, on
 
 /** 무드등 색 하나: 원 + 이름. 고른 색은 테두리 고리 */
 @Composable
-private fun ColorChoice(label: String, color: Color, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+internal fun ColorChoice(label: String, color: Color, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val c = MajiTheme.colors
     // 누를 때: 회색 네모 물결 대신 원이 살짝 눌렸다가 돌아와요 (손가락 아래에서 바로 반응)
     val interaction = remember { MutableInteractionSource() }
@@ -394,6 +424,9 @@ private fun SmallStep(symbol: String, enabled: Boolean, onClick: () -> Unit) {
 @Composable
 private fun Toggle(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
     val c = MajiTheme.colors
+    // 켜고 끌 때 손잡이가 미끄러지고 색이 같이 바뀌어요
+    val pos by animateFloatAsState(if (checked) 1f else -1f, spring(dampingRatio = 0.8f, stiffness = 700f), label = "toggle")
+    val track = androidx.compose.ui.graphics.lerp(c.textSub.copy(alpha = 0.3f), c.toggleOn, (pos + 1f) / 2f)
     Box(
         Modifier
             .size(width = 112.dp, height = MinTouch)
@@ -403,9 +436,9 @@ private fun Toggle(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Un
     ) {
         Box(
             Modifier.size(width = 96.dp, height = 56.dp).clip(CircleShape)
-                .background(if (checked) Color(0xFF02C265) else c.textSub.copy(alpha = 0.3f))
+                .background(track)
                 .padding(6.dp),
-            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+            contentAlignment = BiasAlignment(pos, 0f)
         ) {
             Box(Modifier.size(44.dp).clip(CircleShape).background(Color.White))
         }

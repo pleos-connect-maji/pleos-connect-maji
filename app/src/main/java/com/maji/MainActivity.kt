@@ -139,7 +139,8 @@ private fun MajiApp(themeSwitch: @Composable (Modifier) -> Unit) {
             seatSetupDone = seatSetupDone,
             isPark = isPark,
             doorOpen = doorOpen,
-            climateToday = repo.climateFor(it, repo.seasonFor(LocalDate.now().monthValue))
+            climateToday = repo.climateFor(it, repo.seasonFor(LocalDate.now().monthValue)),
+            boarded = step == MajiStep.BOARDED || step == MajiStep.RIDING_HOME
         )
     }
 
@@ -164,6 +165,8 @@ private fun MajiApp(themeSwitch: @Composable (Modifier) -> Unit) {
             step = step,
             drivingRestricted = drivingRestricted,
             showDone = showDone,
+            currentHeat = currentHeat,
+            currentTemp = currentTemp,
             onFinished = { showDone = true },
             onDone = { showDone = false },
             onAdd = { screen = AppScreen.ProfileAdd },
@@ -193,6 +196,8 @@ private fun HomeScreen(
     step: MajiStep,
     drivingRestricted: Boolean,
     showDone: Boolean,
+    currentHeat: Int?,
+    currentTemp: Float?,
     onFinished: () -> Unit,
     onDone: () -> Unit,
     onAdd: () -> Unit,
@@ -210,7 +215,10 @@ private fun HomeScreen(
             drivingRestricted = drivingRestricted,
             controlAvailable = control.isControlAvailable(),
             onFinished = onFinished,
-            onDone = onDone
+            onDone = onDone,
+            control = control,
+            currentHeat = currentHeat,
+            currentTemp = currentTemp
         )
     } else {
         Box(Modifier.fillMaxSize()) {
