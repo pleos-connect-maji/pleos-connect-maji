@@ -146,6 +146,8 @@ private fun CapsuleButton(
         modifier = modifier
             .heightIn(min = MinTouch)
             .alpha(if (enabled) 1f else 0.4f)
+            // 누름 효과가 버튼 전체(그림자·배경·글자)에 걸리도록 clickable을 앞에 둬요
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .then(if (glass) Modifier.shadow(20.dp, CircleShape, ambientColor = ShadowTint, spotColor = ShadowTint) else Modifier)
             .clip(CircleShape)
             .then(
@@ -167,7 +169,6 @@ private fun CapsuleButton(
                     drawContent()
                 } else Modifier
             )
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 36.dp)
     ) {
         Text(text = text, style = MajiTheme.type.button, color = textColor, textAlign = TextAlign.Center)

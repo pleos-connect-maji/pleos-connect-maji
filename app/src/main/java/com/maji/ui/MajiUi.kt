@@ -188,9 +188,9 @@ fun RoundGlassButton(symbol: String, onClick: () -> Unit, enabled: Boolean = tru
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(size)
+            .clickable(enabled = enabled, onClick = onClick)
             .clip(CircleShape)
             .background(c.glass)
-            .clickable(enabled = enabled, onClick = onClick)
     ) {
         Text(symbol, style = MajiTheme.type.title, color = c.text.copy(alpha = if (enabled) 1f else 0.4f))
     }

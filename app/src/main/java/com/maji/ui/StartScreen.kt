@@ -153,13 +153,13 @@ private fun PersonCard(profile: Profile, detail: String, enabled: Boolean, onSta
         Modifier
             .width(width)
             .fillMaxSize()
+            .clickable(enabled = enabled, onClick = onStart)  // 카드 전체가 살짝 눌려요
             .clip(shape)
             .background(c.surface)
             .drawBehind {
                 // 카드 위쪽에 그 사람 무드등 빛
                 drawRect(Brush.radialGradient(listOf(color.copy(alpha = if (c.isDark) 0.45f else 0.55f), Color.Transparent), center = Offset(size.width * 0.5f, -size.height * 0.1f), radius = size.width * 0.95f))
             }
-            .clickable(enabled = enabled, onClick = onStart)
             .padding(32.dp)
     ) {
         SoftAvatar(initialOf(profile.name), color, size = 104.dp)
@@ -181,9 +181,9 @@ private fun AddPersonCard(enabled: Boolean, onAdd: () -> Unit, width: Dp) {
         Modifier
             .width(width)
             .fillMaxSize()
+            .clickable(enabled = enabled, onClick = onAdd)
             .clip(shape)
             .border(BorderStroke(3.dp, c.textSub.copy(alpha = 0.3f)), shape)
-            .clickable(enabled = enabled, onClick = onAdd)
             .padding(32.dp)
     ) {
         Box(Modifier.size(104.dp).clip(CircleShape).background(c.glass), contentAlignment = Alignment.Center) {

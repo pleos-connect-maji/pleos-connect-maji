@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -291,6 +292,7 @@ private fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRe
         modifier = modifier
             .heightIn(min = MinTouch)
             .alpha(if (enabled) 1f else 0.4f)
+            .graphicsLayer { val s = if (pressed) 0.95f else 1f; scaleX = s; scaleY = s }  // 누르는 동안 살짝 작아져요
             .clip(CircleShape)
             .background(if (pressed) c.primary else c.glass)
             .pointerInput(enabled) {
@@ -352,9 +354,9 @@ private fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
         Modifier
             .size(MinTouch)
             .alpha(if (enabled) 1f else 0.35f)
+            .clickable(enabled = enabled, onClick = onClick)
             .clip(CircleShape)
-            .background(c.glass)
-            .clickable(enabled = enabled, onClick = onClick),
+            .background(c.glass),
         contentAlignment = Alignment.Center
     ) {
         Text(symbol, style = MajiTheme.type.headline, color = c.text)
@@ -369,9 +371,9 @@ private fun Chip(text: String, selected: Boolean, enabled: Boolean, onClick: () 
         Modifier
             .heightIn(min = MinTouch)
             .alpha(if (enabled) 1f else 0.4f)
+            .clickable(enabled = enabled, onClick = onClick)
             .clip(CircleShape)
             .background(if (selected) c.primary else c.glass)
-            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 32.dp),
         contentAlignment = Alignment.Center
     ) {

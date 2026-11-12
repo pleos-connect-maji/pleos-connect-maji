@@ -1,6 +1,18 @@
 package com.maji.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -314,22 +326,48 @@ private fun GreetingOption(text: String, selected: Boolean, enabled: Boolean, on
 @Composable
 private fun ColorChoice(label: String, color: Color, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     val c = MajiTheme.colors
+    // 누를 때: 회색 네모 물결 대신 원이 살짝 눌렸다가 돌아와요 (손가락 아래에서 바로 반응)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.88f else 1f, spring(dampingRatio = 0.5f, stiffness = 600f), label = "press")
+    // 고르면: 검은 테두리 대신 같은 색 고리 + 은은한 빛, 안쪽 원은 살짝 작아져서 고리와 틈이 생겨요
+    val ring by animateFloatAsState(if (selected) 1f else 0f, tween(220), label = "ring")
+    val ringColor = if (c.isDark) lerp(color, Color.White, 0.15f) else lerp(color, Color.Black, 0.12f)
+    val light = lerp(color, Color.White, 0.4f)
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
             .alpha(if (enabled) 1f else 0.4f)
-            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+            .selectable(
+                selected = selected, enabled = enabled, role = Role.RadioButton,
+                interactionSource = interaction, indication = null, onClick = onClick
+            )
     ) {
         Box(
             Modifier
                 .size(MinTouch)
-                .then(if (selected) Modifier.border(4.dp, c.text, CircleShape) else Modifier)
-                .padding(8.dp)
-                .clip(CircleShape)
-                .background(color)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .drawBehind {
+                    val full = size.minDimension / 2f
+                    if (ring > 0f) {
+                        // 고른 색 주변에 번지는 빛 → 고리 → 틈 → 색 원
+                        drawCircle(Brush.radialGradient(listOf(color.copy(alpha = 0.45f * ring), Color.Transparent), radius = full * 1.25f), radius = full * 1.25f)
+                        drawCircle(ringColor.copy(alpha = ring), radius = full - 1.5.dp.toPx(), style = Stroke(width = 3.dp.toPx()))
+                    }
+                    val inner = full * (0.82f - 0.12f * ring)
+                    drawCircle(
+                        Brush.radialGradient(listOf(light, color), center = Offset(center.x - inner * 0.3f, center.y - inner * 0.35f), radius = inner * 1.4f),
+                        radius = inner
+                    )
+                }
         )
-        Text(label, style = MajiTheme.type.caption, color = c.textSub)
+        Text(
+            label,
+            style = MajiTheme.type.caption.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal),
+            color = if (selected) c.text else c.textSub
+        )
     }
 }
 
@@ -348,7 +386,7 @@ private fun SettingLine(label: String, control: @Composable () -> Unit) {
 private fun SmallStep(symbol: String, enabled: Boolean, onClick: () -> Unit) {
     val c = MajiTheme.colors
     Box(
-        Modifier.size(MinTouch).alpha(if (enabled) 1f else 0.35f).clip(CircleShape).background(c.glass).clickable(enabled = enabled, onClick = onClick),
+        Modifier.size(MinTouch).alpha(if (enabled) 1f else 0.35f).clickable(enabled = enabled, onClick = onClick).clip(CircleShape).background(c.glass),
         contentAlignment = Alignment.Center
     ) { Text(symbol, style = MajiTheme.type.title, color = c.text) }
 }
@@ -378,7 +416,7 @@ private fun Toggle(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Un
 @Composable
 private fun DeleteLink(enabled: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.heightIn(min = MinTouch).clip(CircleShape).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 8.dp),
+        Modifier.heightIn(min = MinTouch).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 8.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         Text("이 사람 지우기", style = MajiTheme.type.button, color = MajiTheme.colors.warning)
