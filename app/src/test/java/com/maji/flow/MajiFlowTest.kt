@@ -270,6 +270,42 @@ class MajiFlowTest {
         assertEquals(listOf("audio/prepare_notice.mp3", "audio/prepare_done.mp3"), greeter.notices)
     }
 
+    // 새로 태울 때(이번 계절 값 없음): 자리 설정 화면에서 "다음에"면 준비 완료 안내음을 안 틀어요 (피드백)
+    private val newcomer = Profile(id = 99, name = "새 사람", seatMoveMs = 0)
+
+    @Test
+    fun `새로 태울 때 다음에를 누르면 준비 안내음을 하나도 틀지 않아요`() {
+        flow.start(newcomer)
+        flow.onParkChanged(true)
+        assertEquals(emptyList<String>(), greeter.notices)  // 맞춘 게 없어서 시작 안내음도 없어요
+
+        flow.onSeatSetupFinished(saved = false)
+
+        assertEquals(emptyList<String>(), greeter.notices)
+    }
+
+    @Test
+    fun `새로 태울 때 저장을 누르면 그때 준비 완료 안내음을 틀어요`() {
+        flow.start(newcomer)
+        flow.onParkChanged(true)
+
+        flow.onSeatSetupFinished(saved = true)
+        flow.onSeatSetupFinished(saved = true)  // 두 번 불려도 한 번만
+
+        assertEquals(listOf("audio/prepare_done.mp3"), greeter.notices)
+    }
+
+    @Test
+    fun `새로 태울 때 저장 전에 문이 열리면 준비 완료 안내음을 틀지 않아요`() {
+        flow.start(newcomer)
+        flow.onParkChanged(true)
+        flow.onPassengerDoorChanged(true)
+
+        flow.onSeatSetupFinished(saved = true)
+
+        assertEquals(emptyList<String>(), greeter.notices)
+    }
+
     @Test
     fun `바꿨다가 준비 값으로 되돌리면 저장하지 않아요`() = runBlocking {
         flow.start(mom)

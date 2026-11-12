@@ -45,6 +45,10 @@ class MajiFlowImpl(
     private var finishing = false  // 내릴 때 무드등 읽기·복구가 끝나기 전엔 새 맞이를 받지 않아요 (#112 리뷰)
     private var manualMovesAtBoarding: Int? = null  // 탈 때 앱 ◀▶ 이동 횟수 (#112 리뷰)
     private var seatAtBoarding: Int? = null  // 문이 열려 시트를 멈춘 순간의 시트 기록. 내릴 때와 다르면 탄 뒤 움직인 것 (#111)
+    // 새로 태울 때(오늘 계절 값 없음)는 시작 안내음을 안 틀고, 자리 설정 화면에서 "저장"을 눌러야 완료 안내음을 틀어요. "다음에"면 안 틀어요
+    private var waitingSeatSetup = false
+    private var seatSetupSaved = false
+    private var prepareFinished = false
 
     init {
         // 시트 이동 기록이 바뀌면 저장해요 (#26, 근희 #86). 맞이 중일 때만 저장해요 (끝난 뒤에는 저장 기록을 다시 만들지 않아요)
@@ -71,6 +75,9 @@ class MajiFlowImpl(
         changedTemperature = null
         seatAtBoarding = null
         manualMovesAtBoarding = null
+        waitingSeatSetup = false
+        seatSetupSaved = false
+        prepareFinished = false
         profile.place?.let { destinations?.requestDestination(it) }
         currentSeason = profiles.seasonFor(month())
         moveTo(MajiStep.HEADING)
@@ -81,6 +88,14 @@ class MajiFlowImpl(
 
     // 최종 하차 버튼 → 바꾼 값을 학습하고 원래대로
     override fun finish() = endAndRestore(learn = true)
+
+    /** 자리 설정 화면이 닫혔어요. saved = "저장", false = "다음에" (다음에면 준비 완료 안내음을 틀지 않아요) */
+    fun onSeatSetupFinished(saved: Boolean) {
+        if (!waitingSeatSetup) return
+        waitingSeatSetup = false
+        seatSetupSaved = saved
+        announcePrepareDone()
+    }
 
     // ───────────── A 신호 받기 ─────────────
 
@@ -144,13 +159,18 @@ class MajiFlowImpl(
             control.readPassengerState { state ->
                 savedState = state.copy(temperature = state.temperature ?: startTemperature ?: lastTemperature)
                 // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
-                val climate = profiles.climateFor(fresh, profiles.seasonFor(month())) ?: Climate()
+                val saved = profiles.climateFor(fresh, profiles.seasonFor(month()))
+                val climate = saved ?: Climate()
                 preparedClimate = climate
+                waitingSeatSetup = saved == null  // 이번 계절 값이 없으면 자리 설정 화면이 떠요
+                seatSetupSaved = saved != null
+                prepareFinished = false
                 persist()  // 준비 값이 생겼으니 저장해요 (#26)
-                greeter.playNotice(Notices.PREPARE)
+                // 새로 태울 때(자리 설정 화면이 뜰 때)는 아직 맞춘 게 없어서 "자리 맞춰 둘게요"를 안 틀어요
+                if (!waitingSeatSetup) greeter.playNotice(Notices.PREPARE)
                 control.preparePassenger(climate, fresh.seatMoveMs) {
-                    // 준비가 끝났을 때 아직 준비 중이면 완료 안내음 (문이 먼저 열렸으면 안 틀어요)
-                    if (current == MajiStep.PREPARING) greeter.playNotice(Notices.PREPARE_DONE)
+                    prepareFinished = true
+                    announcePrepareDone()
                 }
             }
         }
@@ -198,6 +218,15 @@ class MajiFlowImpl(
                 RideLearnRules.withRide(fresh, seatMs, light)?.let { profiles.save(it) }
             }
         }
+    }
+
+    // 준비 완료 안내음: 준비가 끝났고, 아직 준비 중이고(문이 먼저 열렸으면 안 틀어요),
+    // 자리 설정 화면이 떴다면 "저장"으로 닫혔을 때만 틀어요 ("다음에"면 맞춘 게 없어서 안 틀어요)
+    private fun announcePrepareDone() {
+        if (!prepareFinished || waitingSeatSetup || !seatSetupSaved) return
+        if (current != MajiStep.PREPARING) return
+        prepareFinished = false  // 한 번만
+        greeter.playNotice(Notices.PREPARE_DONE)
     }
 
     // 오늘만의 인사는 한 번 읽고 나면 비워요 (#38)

@@ -151,8 +151,8 @@ private fun MajiApp(themeSwitch: @Composable (Modifier) -> Unit) {
             currentHeat = currentHeat,
             currentTemp = currentTemp,
             drivingRestricted = drivingRestricted,
-            onSaved = { seatSetupDone = true },
-            onSkip = { seatSetupDone = true },
+            onSaved = { seatSetupDone = true; flow.onSeatSetupFinished(saved = true) },
+            onSkip = { seatSetupDone = true; flow.onSeatSetupFinished(saved = false) },  // "다음에"면 준비 완료 안내음을 안 틀어요
             control = control,  // 시트 ◀▶(앞뒤) 연결에 필요 (빠져 있어서 시트가 안 움직였어요)
             onHeatChange = { control.setSeatHeat(it) },
             onTempChange = { celsius -> if (celsius != null) control.setTemperature(celsius) }
