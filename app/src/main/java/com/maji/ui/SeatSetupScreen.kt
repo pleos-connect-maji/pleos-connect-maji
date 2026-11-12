@@ -186,9 +186,12 @@ fun SeatSetupScreen(
             onUp = { keepTemp = false; temp += TEMP_STEP; onTempChange(temp) },
             modifier = m
         ) {
-            Chip("그대로 두기", selected = keepTemp, enabled = !locked) {
-                keepTemp = !keepTemp
-                onTempChange(if (keepTemp) null else temp)
+            // 처음 맞이에는 "그대로 둘" 값이 없어서 안 보여요. 계절이 바뀌었거나 다시 맞출 때만 (#111)
+            if (!firstTime) {
+                Chip("그대로 두기", selected = keepTemp, enabled = !locked) {
+                    keepTemp = !keepTemp
+                    onTempChange(if (keepTemp) null else temp)
+                }
             }
         }
     }
