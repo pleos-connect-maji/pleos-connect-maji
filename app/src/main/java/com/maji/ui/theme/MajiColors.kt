@@ -77,7 +77,7 @@ val DarkMajiColors = MajiColors(
 val LocalMajiColors = staticCompositionLocalOf { LightMajiColors }
 
 /**
- * 귀갓길 무드등 색 (Profile.lightColor에 저장하는 값).
+ * 함께 출발할 때(탄 뒤 P 해제) 켜는 무드등 색 (Profile.lightColor에 저장하는 값).
  * 첫 번째는 B의 기본값(DEFAULT_LIGHT_COLOR)과 같아요. 나머지는 현대 아이오닉 6 무드램프 테마의 구성 색에서 골랐어요.
  */
 object MoodLightColors {

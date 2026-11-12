@@ -3,18 +3,9 @@ package com.maji
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -38,24 +29,28 @@ import kotlinx.coroutines.launch
 import com.maji.profile.RoomProfileRepository
 import com.maji.signal.PleosVehicleSignals
 import com.maji.ui.ProfileEditRoute
-import com.maji.ui.ProfileListRoute
 import com.maji.ui.ProgressRoute
 import com.maji.ui.SeatSetupRoute
 import com.maji.ui.needsSeatSetup
 import java.time.LocalDate
 import com.maji.ui.StartRoute
 import com.maji.voice.PleosGreeter
+import com.maji.ui.theme.MajiTheme
+import com.maji.ui.theme.ThemeModeSwitch
+import com.maji.ui.theme.ThemePreference
 
-// 앱 첫 화면. 시작 화면(흐름 시작), 탑승자 관리 화면(#39)을 연결해요.
-// 진행 화면(#56)과 자리 설정 화면(#46)은 머지 뒤에 붙여요.
+// 앱 첫 화면. 홈(사람 카드, 흐름 시작), 진행·완료 화면, 자리 설정, 사람 추가·수정을 연결해요.
+// 테마(#107): 화면 밝기는 자동(차의 낮/밤)·낮·밤 중에 고르고, 고른 값은 저장해요.
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val themePref = ThemePreference(this)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    MajiApp()
-                }
+            var themeMode by remember { mutableStateOf(themePref.load()) }
+            MajiTheme(themeMode) {
+                MajiApp(themeSwitch = {
+                    ThemeModeSwitch(themeMode, onChange = { themeMode = it; themePref.save(it) }, modifier = it)
+                })
             }
         }
     }
@@ -64,13 +59,12 @@ class MainActivity : ComponentActivity() {
 // 화면 전환 상태
 private sealed class AppScreen {
     object Home : AppScreen()
-    object ProfileList : AppScreen()
     object ProfileAdd : AppScreen()
     data class ProfileEdit(val id: Long) : AppScreen()
 }
 
 @Composable
-private fun MajiApp() {
+private fun MajiApp(themeSwitch: @Composable (Modifier) -> Unit) {
     val context = LocalContext.current.applicationContext
 
     // 차 제어 인스턴스는 하나만 만들어서 흐름과 다른 화면이 같이 써요 (시트 기록이 하나로 유지돼요)
@@ -85,6 +79,7 @@ private fun MajiApp() {
     var drivingRestricted by remember { mutableStateOf(false) }
     var step by remember { mutableStateOf(flow.step) }
     var screen by remember { mutableStateOf<AppScreen>(AppScreen.Home) }
+    var showDone by remember { mutableStateOf(false) }  // "다 내렸어요"로 끝났으면 완료 화면을 보여 줘요
 
     // 자리 설정 화면(#46)에 쓰는 차 상태. 나경 신호 값을 기억해 둬요.
     var isPark by remember { mutableStateOf(false) }
@@ -98,7 +93,10 @@ private fun MajiApp() {
     DisposableEffect(Unit) {
         flow.addListener {
             step = it
-            if (it == MajiStep.HEADING) seatSetupDone = false  // 새 맞이마다 자리 설정을 다시 물어요
+            if (it == MajiStep.HEADING) {
+                seatSetupDone = false  // 새 맞이마다 자리 설정을 다시 물어요
+                showDone = false
+            }
         }
         scope.launch { flow.restoreSavedIfFresh() }  // 저장된 맞이가 있으면 되살려요 (#26)
         signals.start(object : VehicleSignals.Listener by flow {
@@ -165,27 +163,24 @@ private fun MajiApp() {
             control = control,
             step = step,
             drivingRestricted = drivingRestricted,
-            onManageProfiles = { screen = AppScreen.ProfileList },
-            onEditProfile = { screen = AppScreen.ProfileEdit(it.id) }
-        )
-        AppScreen.ProfileList -> ProfileListRoute(
-            repo = repo,
-            drivingRestricted = drivingRestricted,
+            showDone = showDone,
+            onFinished = { showDone = true },
+            onDone = { showDone = false },
             onAdd = { screen = AppScreen.ProfileAdd },
-            onEdit = { screen = AppScreen.ProfileEdit(it) },
-            onBack = { screen = AppScreen.Home }
+            onEditProfile = { screen = AppScreen.ProfileEdit(it.id) },
+            themeSwitch = themeSwitch
         )
         AppScreen.ProfileAdd -> ProfileEditRoute(
             repo = repo,
             profileId = null,
             drivingRestricted = drivingRestricted,
-            onDone = { screen = AppScreen.ProfileList }
+            onDone = { screen = AppScreen.Home }
         )
         is AppScreen.ProfileEdit -> ProfileEditRoute(
             repo = repo,
             profileId = current.id,
             drivingRestricted = drivingRestricted,
-            onDone = { screen = AppScreen.ProfileList }
+            onDone = { screen = AppScreen.Home }
         )
     }
 }
@@ -197,40 +192,37 @@ private fun HomeScreen(
     control: VehicleControl,
     step: MajiStep,
     drivingRestricted: Boolean,
-    onManageProfiles: () -> Unit,
-    onEditProfile: (Profile) -> Unit
+    showDone: Boolean,
+    onFinished: () -> Unit,
+    onDone: () -> Unit,
+    onAdd: () -> Unit,
+    onEditProfile: (Profile) -> Unit,
+    themeSwitch: @Composable (Modifier) -> Unit
 ) {
     val active = step != MajiStep.IDLE && step != MajiStep.FINISHED
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            OutlinedButton(onClick = onManageProfiles, enabled = !drivingRestricted) { Text("탑승자 관리") }
-        }
-
-        // 맞이가 시작되면 진행 화면(#56)을 위에 보여 줘요. 제어가 막힌 차면 대체 모드 문구를 써요.
-        if (active) {
-            Box(modifier = Modifier.fillMaxWidth().height(320.dp)) {
-                ProgressRoute(
-                    flow = flow,
-                    profiles = repo,
-                    drivingRestricted = drivingRestricted,
-                    controlAvailable = control.isControlAvailable()
-                )
-            }
-        }
-
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+    // 맞이 중이면 진행 화면이 화면 전체를 써요. "다 내렸어요"로 끝났으면 완료 화면을 한 번 보여 줘요.
+    // ("맞이 그만하기"로 끝나면 완료 화면 없이 바로 홈으로 돌아와요)
+    if (active || (showDone && step == MajiStep.FINISHED)) {
+        ProgressRoute(
+            flow = flow,
+            profiles = repo,
+            drivingRestricted = drivingRestricted,
+            controlAvailable = control.isControlAvailable(),
+            onFinished = onFinished,
+            onDone = onDone
+        )
+    } else {
+        Box(Modifier.fillMaxSize()) {
             StartRoute(
                 profiles = repo,
                 flow = flow,
                 drivingRestricted = drivingRestricted,
-                onEdit = onEditProfile
+                onEdit = onEditProfile,
+                onAdd = onAdd
             )
+            // 화면 밝기 고르기: 홈 오른쪽 위에 작게
+            themeSwitch(Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 56.dp))
         }
     }
 }
