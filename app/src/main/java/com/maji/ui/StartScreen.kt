@@ -101,10 +101,18 @@ fun StartScreen(
         return
     }
     val listState = rememberLazyListState()
-    val centered by remember { derivedStateOf { listState.firstVisibleItemIndex.coerceIn(0, profiles.lastIndex) } }
-    val accent = MoodLightColors.of(profiles[centered].lightColor)
+    // 화면 가운데에 가장 가까운 카드 = 지금 보고 있는 사람. 그 사람 무드등 색이 화면 빛이 돼요
+    val centered by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2
+            info.visibleItemsInfo
+                .filter { it.index < profiles.size }
+                .minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - mid) }?.index ?: 0
+        }
+    }
+    val accent = MoodLightColors.of(profiles[centered.coerceIn(0, profiles.lastIndex)].lightColor)
     val season = ProfileRules.seasonFor(month)
-    val canAdd = profiles.size < MAX_PROFILES
     val presets = stringArrayResource(R.array.greeting_presets).toList()
 
     MajiBackground(modifier = modifier, accent = accent) {
@@ -145,9 +153,13 @@ fun StartScreen(
                             width = cardWidth
                         )
                     }
-                    if (canAdd) item { AddPersonCard(enabled = !drivingRestricted, onAdd = onAdd, width = cardWidth) }
+                    // 사람 수 제한은 없어요. 마지막 카드는 항상 "맞이할 사람 추가"
+                    item { AddPersonCard(enabled = !drivingRestricted, onAdd = onAdd, width = cardWidth) }
                 }
-                if (!wide) Dots(count = profiles.size + if (canAdd) 1 else 0, current = listState.firstVisibleItemIndex, modifier = Modifier.align(Alignment.CenterHorizontally))
+                // 카드가 화면을 넘칠 때만(넓은 창도 4명 이상이면) 점 표시로 몇 번째인지 알려 줘요
+                if (listState.canScrollForward || listState.canScrollBackward) {
+                    Dots(count = profiles.size + 1, current = centered, modifier = Modifier.align(Alignment.CenterHorizontally))
+                }
                 Spacer(Modifier.weight(0.6f))
             }
         }
