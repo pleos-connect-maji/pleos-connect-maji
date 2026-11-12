@@ -3,6 +3,7 @@ package com.maji.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -421,6 +422,9 @@ private fun SmallStep(symbol: String, enabled: Boolean, onClick: () -> Unit) {
 @Composable
 private fun Toggle(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
     val c = MajiTheme.colors
+    // 켜고 끌 때 손잡이가 미끄러지고 색이 같이 바뀌어요
+    val pos by animateFloatAsState(if (checked) 1f else -1f, spring(dampingRatio = 0.8f, stiffness = 700f), label = "toggle")
+    val track = androidx.compose.ui.graphics.lerp(c.textSub.copy(alpha = 0.3f), c.toggleOn, (pos + 1f) / 2f)
     Box(
         Modifier
             .size(width = 112.dp, height = MinTouch)
@@ -430,9 +434,9 @@ private fun Toggle(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Un
     ) {
         Box(
             Modifier.size(width = 96.dp, height = 56.dp).clip(CircleShape)
-                .background(if (checked) Color(0xFF02C265) else c.textSub.copy(alpha = 0.3f))
+                .background(track)
                 .padding(6.dp),
-            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+            contentAlignment = BiasAlignment(pos, 0f)
         ) {
             Box(Modifier.size(44.dp).clip(CircleShape).background(Color.White))
         }
