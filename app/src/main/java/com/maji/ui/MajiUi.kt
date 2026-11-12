@@ -87,9 +87,9 @@ fun heatText(level: Int): String = heatRow(level).let { (k, v) -> if (v == "끔"
 fun tempText(celsius: Float): String =
     if (celsius % 1f == 0f) "${celsius.toInt()}℃" else String.format(Locale.US, "%.1f℃", celsius)
 
-/** 0 → "원래 위치", 2400 → "앞으로 2.4초", -800 → "뒤로 0.8초" */
+/** 0 → "원래 위치", 2400 → "앞으로 2.4초", -800 → "뒤로 0.8초". 0.05초보다 작으면(0.0초로 보여서) 원래 위치 */
 fun seatText(ms: Int): String = when {
-    ms == 0 -> "원래 위치"
+    kotlin.math.abs(ms) < 50 -> "원래 위치"
     ms > 0 -> String.format(Locale.US, "앞으로 %.1f초", ms / 1000f)
     else -> String.format(Locale.US, "뒤로 %.1f초", -ms / 1000f)
 }
