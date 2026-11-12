@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.haze) // 리퀴드 글래스 뒤 흐림 (#107)
     implementation(libs.pleos.vehicle)
     implementation(libs.pleos.tts)
     debugImplementation(libs.androidx.ui.tooling)
