@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.maji.contract.Climate
@@ -144,10 +145,13 @@ fun SubText(text: String, modifier: Modifier = Modifier) {
 /** 값 목록 카드. caption은 카드 위쪽 작은 설명 */
 @Composable
 fun ValueCard(rows: List<Pair<String, String>>, caption: String? = null, mark: String? = null, markColor: Color = Color.Unspecified) {
-    if (rows.isEmpty() && caption == null) return
+    // 값이 없으면 카드를 아예 안 그려요 (설명 한 줄만 든 빈 카드는 읽히지도 않고 어색해요)
+    if (rows.isEmpty()) return
     MajiCard(Modifier.fillMaxWidth()) {
         if (caption != null) {
-            SubText(caption, Modifier.padding(start = 32.dp, end = 32.dp, top = 24.dp))
+            // 카드 제목: 보조 회색 작은 글씨가 아니라 본문 크기·진한 글씨로 또렷하게
+            Text(caption, style = MajiTheme.type.body.copy(fontWeight = FontWeight.SemiBold), color = MajiTheme.colors.text,
+                modifier = Modifier.padding(start = 32.dp, end = 32.dp, top = 28.dp, bottom = 4.dp))
         }
         rows.forEach { (label, value) ->
             if (mark != null) {

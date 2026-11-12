@@ -271,14 +271,15 @@ fun SeatSetupScreen(
                         seatCard(Modifier.fillMaxWidth())
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    if (wide) Spacer(Modifier.weight(1.4f))
+                // 버튼은 카드 줄과 같은 격자에 맞춰요: [다음에] = 카드 한 장 폭, [저장] = 카드 두 장 폭.
+                // 한쪽 끝으로 쏠리지 않고 카드 바로 아래 꽉 차게 놓여서, 운전석 쪽에서도 저장이 가까워요
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (wide) 24.dp else 16.dp)) {
                     MajiGlassButton("다음에", onClick = onSkip, modifier = Modifier.weight(1f))
                     MajiPrimaryButton(
                         "저장",
                         onClick = { onSave(season, Climate(seatHeat = heat, temperature = if (keepTemp) null else temp), seatMs) },
                         enabled = !locked,
-                        modifier = Modifier.weight(1.5f)
+                        modifier = Modifier.weight(if (wide) 2f else 1.5f)
                     )
                 }
                 if (wide) Spacer(Modifier.weight(0.6f))
