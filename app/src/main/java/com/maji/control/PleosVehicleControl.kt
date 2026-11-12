@@ -418,9 +418,16 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     override fun stopSeatMove(): Int {
         stopSeatAndMeasure()
         val moved = seatTracker.takeManualMs()
+        if (moved != 0) manualSeatMoves++
         Log.d(TAG, "[#46] 시트 뗌 → ${moved}ms")
         return moved
     }
+
+    // 앱 ◀▶로 실제로 움직인 횟수 (#112 리뷰). 자동 준비 출발이 늦게 거절돼 기록이 바뀌어도 이건 그대로라
+    // C가 "탄 뒤 앱으로 움직였는지"를 이걸로 판단해요
+    private var manualSeatMoves = 0
+
+    override fun manualSeatMoveCount(): Int = manualSeatMoves
 
     override fun setSeatHeat(level: Int) {
         applyHeat(level) {}

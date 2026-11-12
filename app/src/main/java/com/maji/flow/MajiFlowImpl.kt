@@ -43,6 +43,7 @@ class MajiFlowImpl(
     private var changedTemperature: Float? = null
     private var currentSeason: Season? = null  // 맞이를 시작할 때 정한 계절 (학습과 복원에 씀)
     private var finishing = false  // 내릴 때 무드등 읽기·복구가 끝나기 전엔 새 맞이를 받지 않아요 (#112 리뷰)
+    private var manualMovesAtBoarding: Int? = null  // 탈 때 앱 ◀▶ 이동 횟수 (#112 리뷰)
     private var seatAtBoarding: Int? = null  // 문이 열려 시트를 멈춘 순간의 시트 기록. 내릴 때와 다르면 탄 뒤 움직인 것 (#111)
 
     init {
@@ -69,6 +70,7 @@ class MajiFlowImpl(
         changedHeat = null
         changedTemperature = null
         seatAtBoarding = null
+        manualMovesAtBoarding = null
         profile.place?.let { destinations?.requestDestination(it) }
         currentSeason = profiles.seasonFor(month())
         moveTo(MajiStep.HEADING)
@@ -97,6 +99,7 @@ class MajiFlowImpl(
         moveTo(MajiStep.BOARDED)
         control.stopSeat()
         seatAtBoarding = control.seatMovedMs()  // 멈춘 뒤라 정산이 끝난 값이에요
+        manualMovesAtBoarding = control.manualSeatMoveCount()
         greeter.playGreeting(p) {
             greeter.playSong(p)
             clearSpecialGreeting(p)
@@ -162,7 +165,8 @@ class MajiFlowImpl(
         val state = savedState
         val readLight = learn && current == MajiStep.RIDING_HOME
         val climate = Climate(seatHeat = changedHeat, temperature = changedTemperature)
-        val seatMs = RideLearnRules.seatToLearn(seatAtBoarding, control.seatMovedMs())
+        val movedInApp = manualMovesAtBoarding?.let { control.manualSeatMoveCount() != it } ?: false
+        val seatMs = RideLearnRules.seatToLearn(seatAtBoarding, control.seatMovedMs(), movedInApp)
         val season = currentSeason ?: profiles.seasonFor(month())
         savedState = null
         greeter.stopAll()
