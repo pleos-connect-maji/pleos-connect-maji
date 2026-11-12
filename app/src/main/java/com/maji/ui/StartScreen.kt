@@ -38,7 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.text.style.TextOverflow
+import com.maji.R
 import com.maji.contract.MajiFlow
+import com.maji.voice.GreetingRules
 import com.maji.contract.Profile
 import com.maji.contract.ProfileRepository
 import com.maji.profile.FakeProfileRepository
@@ -101,6 +105,7 @@ fun StartScreen(
     val accent = MoodLightColors.of(profiles[centered].lightColor)
     val season = ProfileRules.seasonFor(month)
     val canAdd = profiles.size < MAX_PROFILES
+    val presets = stringArrayResource(R.array.greeting_presets).toList()
 
     MajiBackground(modifier = modifier, accent = accent) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -112,12 +117,13 @@ fun StartScreen(
                     Headline("누구를 맞이하러 갈까요?")
                     SubText(if (drivingRestricted) "주행 중에는 시작할 수 없어요. 차를 세운 뒤 눌러 주세요." else "카드를 누르면 바로 출발해요")
                 }
+                Spacer(Modifier.weight(1f))  // 카드 줄을 남은 공간 가운데에 둬요
                 LazyRow(
                     state = listState,
                     flingBehavior = rememberSnapFlingBehavior(listState),
                     contentPadding = PaddingValues(horizontal = side),
                     horizontalArrangement = Arrangement.spacedBy(28.dp),
-                    modifier = Modifier.fillMaxWidth().weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     items(profiles, key = { it.id }) { p ->
                         PersonCard(
@@ -129,7 +135,8 @@ fun StartScreen(
                                     c.temperature?.let { tempText(it) }
                                 )
                                 parts.joinToString(" · ")
-                            } ?: "처음 맞이할 때\n자리를 맞춰요",
+                            } ?: "처음 맞이할 때 자리를 맞춰요",
+                            greeting = GreetingRules.textFor(p, presets),
                             enabled = !drivingRestricted,
                             onStart = { onStart(p) },
                             onEdit = { onEdit(p) },
@@ -139,20 +146,21 @@ fun StartScreen(
                     if (canAdd) item { AddPersonCard(enabled = !drivingRestricted, onAdd = onAdd, width = cardWidth) }
                 }
                 if (!wide) Dots(count = profiles.size + if (canAdd) 1 else 0, current = listState.firstVisibleItemIndex, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Spacer(Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun PersonCard(profile: Profile, detail: String, enabled: Boolean, onStart: () -> Unit, onEdit: () -> Unit, width: Dp) {
+private fun PersonCard(profile: Profile, detail: String, greeting: String?, enabled: Boolean, onStart: () -> Unit, onEdit: () -> Unit, width: Dp) {
     val c = MajiTheme.colors
     val color = MoodLightColors.of(profile.lightColor)
     val shape = SquircleShape(44.dp)
     Box(
         Modifier
             .width(width)
-            .fillMaxSize()
+            .height(CardHeight)
             .clickable(enabled = enabled, onClick = onStart)  // 카드 전체가 살짝 눌려요
             .clip(shape)
             .background(c.surface)
@@ -162,14 +170,18 @@ private fun PersonCard(profile: Profile, detail: String, enabled: Boolean, onSta
             }
             .padding(32.dp)
     ) {
+        // 위: 사람 원 + 수정 / 가운데: 이름·자리·들려줄 인사 / 아래: 출발 버튼
         SoftAvatar(initialOf(profile.name), color, size = 104.dp)
         RoundGlassButton("✎", onClick = onEdit, enabled = enabled, modifier = Modifier.align(Alignment.TopEnd))
-        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(profile.name, style = MajiTheme.type.headline, color = c.text)
+        Column(Modifier.align(Alignment.CenterStart).fillMaxWidth().padding(top = 40.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(profile.name, style = MajiTheme.type.headline, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             SubText(detail)
-            Spacer(Modifier.height(8.dp))
-            MajiGlassButton("맞이하러 가기", onClick = onStart, enabled = enabled, modifier = Modifier.fillMaxWidth())
+            if (greeting != null) {
+                Spacer(Modifier.height(12.dp))
+                Text("“$greeting”", style = MajiTheme.type.body, color = c.text.copy(alpha = 0.8f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
         }
+        MajiGlassButton("맞이하러 가기", onClick = onStart, enabled = enabled, modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth())
     }
 }
 
@@ -180,7 +192,7 @@ private fun AddPersonCard(enabled: Boolean, onAdd: () -> Unit, width: Dp) {
     Box(
         Modifier
             .width(width)
-            .fillMaxSize()
+            .height(CardHeight)
             .clickable(enabled = enabled, onClick = onAdd)
             .clip(shape)
             .border(BorderStroke(3.dp, c.textSub.copy(alpha = 0.3f)), shape)
@@ -189,7 +201,7 @@ private fun AddPersonCard(enabled: Boolean, onAdd: () -> Unit, width: Dp) {
         Box(Modifier.size(104.dp).clip(CircleShape).background(c.glass), contentAlignment = Alignment.Center) {
             Text("+", style = MajiTheme.type.headline, color = c.text)
         }
-        Column(Modifier.align(Alignment.BottomStart), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.align(Alignment.CenterStart).padding(top = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("맞이할 사람 추가", style = MajiTheme.type.title, color = c.text)
             SubText("자주 맞이하는 사람을\n넣어 보세요")
         }
@@ -222,6 +234,9 @@ private fun Dots(count: Int, current: Int, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** 카드 높이: 내용(원·이름·자리·인사·버튼)에 맞춘 고정 높이. 화면 높이를 꽉 채우면 가운데가 비어 보여요 */
+private val CardHeight = 560.dp
 
 private fun seasonLabel(s: com.maji.contract.Season) = if (s == com.maji.contract.Season.WINTER) "겨울" else "여름"
 
