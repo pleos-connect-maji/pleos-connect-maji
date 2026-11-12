@@ -1,23 +1,26 @@
 package com.maji.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,8 +34,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -44,14 +48,22 @@ import com.maji.contract.Season
 import com.maji.contract.VehicleControl
 import com.maji.profile.FakeProfileRepository
 import com.maji.profile.ProfileRules
+import com.maji.ui.theme.MajiBackground
+import com.maji.ui.theme.MajiCard
+import com.maji.ui.theme.MajiGlassButton
+import com.maji.ui.theme.MajiPrimaryButton
+import com.maji.ui.theme.MajiTheme
+import com.maji.ui.theme.MinTouch
+import com.maji.ui.theme.MoodLightColors
+import com.maji.ui.theme.ThemeMode
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.Locale
 
-// D. 자리 설정 화면 (#46). 탑승자가 탄 뒤 정차 중(P단)에 열선·온도를 맞추고 그 계절에 저장해요.
+// D. 자리 설정 화면 (#46, 리디자인 #109). 탑승자가 탄 뒤 정차 중(P단)에 열선·온도를 맞추고 그 계절에 저장해요.
 // 띄우는 때 (C가 정해요): climateFor(profile, 오늘 계절) == null 일 때
-//   - 두 계절 다 비어 있으면 "처음 타셨네요?"
-//   - 이번 계절만 비어 있으면 "계절이 바뀌었어요"
+//   - 두 계절 다 비어 있으면 "처음 맞이하네요"
+//   - 이번 계절만 비어 있으면 "겨울이 왔어요" 처럼
 //
 // 차와 연결되는 값 (C가 넘겨 줘요):
 //   currentHeat / currentTemp  = 지금 차 상태 (A의 onPassengerHeatChanged / onPassengerTemperatureChanged)
@@ -152,129 +164,145 @@ fun SeatSetupScreen(
         }
     }
 
+    val firstTime = profile.winter == null && profile.summer == null
+    val seasonChanged = !firstTime && ProfileRules.climateFor(profile, initialSeason) == null
     val title = when {
-        profile.winter == null && profile.summer == null -> "${profile.name}, 처음 타셨네요? 편하게 맞춰 보세요"
-        ProfileRules.climateFor(profile, initialSeason) == null -> "계절이 바뀌었어요. ${seasonName(initialSeason)} 자리를 맞춰 볼까요?"
+        firstTime -> "${josa(profile.name, "을", "를")} 처음 맞이하네요"
+        seasonChanged -> "${seasonName(initialSeason)}이 왔어요"
         else -> "${profile.name} 자리 다시 맞추기"
     }
+    val subtitle = when {
+        seasonChanged -> "${profile.name} ${seasonName(initialSeason)} 자리를 맞춰 볼까요? 누르면 차에 바로 반영돼요"
+        else -> "자리를 맞춰 볼까요? 누르면 차에 바로 반영돼요"
+    }
     val locked = drivingRestricted
+    val c = MajiTheme.colors
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // ── 맨 위: 제목 + 저장·다음에
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+    val heatCard: @Composable (Modifier) -> Unit = { m ->
+        val (label, value) = heatRow(heat)
+        SettingCard(
+            title = "열선·통풍",
+            now = "지금 차 " + (currentHeat?.let { heatRow(it).let { (k, v) -> if (v == "끔") "끔" else "$k $v" } } ?: "모름"),
+            value = if (value == "끔") "끔" else "$label $value",
+            canDown = !locked && heat > ProfileRules.HEAT_MIN,
+            canUp = !locked && heat < ProfileRules.HEAT_MAX,
+            onDown = { heat -= 1; onHeatChange(heat) },
+            onUp = { heat += 1; onHeatChange(heat) },
+            modifier = m
+        )
+    }
+    val tempCard: @Composable (Modifier) -> Unit = { m ->
+        SettingCard(
+            title = "조수석 온도",
+            now = "지금 차 " + (currentTemp?.let { tempLabel(it) } ?: "모름"),
+            value = if (keepTemp) "그대로 두기" else tempLabel(temp),
+            // 그대로 두기 상태에서도 − + 를 누르면 바로 온도 조절로 바뀌어요
+            canDown = !locked && temp > ProfileRules.TEMP_MIN,
+            canUp = !locked && temp < ProfileRules.TEMP_MAX,
+            onDown = { keepTemp = false; temp -= TEMP_STEP; onTempChange(temp) },
+            onUp = { keepTemp = false; temp += TEMP_STEP; onTempChange(temp) },
+            modifier = m
         ) {
-            Text(text = title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            Button(
-                onClick = { onSave(season, Climate(seatHeat = heat, temperature = if (keepTemp) null else temp), seatMs) },
-                enabled = !locked,
-                modifier = Modifier.heightIn(min = 56.dp)
-            ) { Text("저장") }
-            OutlinedButton(onClick = onSkip, modifier = Modifier.heightIn(min = 56.dp)) { Text("다음에") }
+            Chip("그대로 두기", selected = keepTemp, enabled = !locked) {
+                keepTemp = !keepTemp
+                onTempChange(if (keepTemp) null else temp)
+            }
         }
-
-        if (locked) {
-            Text(text = "주행 중에는 바꿀 수 없어요. 정차 후에 해 주세요.", style = MaterialTheme.typography.bodyLarge)
-        }
-
-        // ── 계절
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(text = "계절", style = MaterialTheme.typography.titleMedium)
-            ChoiceButton("겨울", selected = season == Season.WINTER, enabled = !locked) { selectSeason(Season.WINTER) }
-            ChoiceButton("여름", selected = season == Season.SUMMER, enabled = !locked) { selectSeason(Season.SUMMER) }
-            Text(text = "지금 고른 계절에만 저장돼요", style = MaterialTheme.typography.bodyMedium)
-        }
-
-        // ── 열선 | 온도
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            SettingCard(
-                title = "시트 열선·통풍",
-                now = "지금 차: " + (currentHeat?.let { heatLabel(it) } ?: "모름"),
-                value = heatLabel(heat),
-                canDown = !locked && heat > ProfileRules.HEAT_MIN,
-                canUp = !locked && heat < ProfileRules.HEAT_MAX,
-                onDown = { heat -= 1; onHeatChange(heat) },
-                onUp = { heat += 1; onHeatChange(heat) },
-                modifier = Modifier.weight(1f)
-            )
-
-            SettingCard(
-                title = "조수석 온도",
-                now = "지금 차: " + (currentTemp?.let { tempLabel(it) } ?: "모름"),
-                value = if (keepTemp) "그대로 두기" else tempLabel(temp),
-                // 그대로 두기 상태에서도 − + 를 누르면 바로 온도 조절로 바뀌어요
-                canDown = !locked && temp > ProfileRules.TEMP_MIN,
-                canUp = !locked && temp < ProfileRules.TEMP_MAX,
-                onDown = { keepTemp = false; temp -= TEMP_STEP; onTempChange(temp) },
-                onUp = { keepTemp = false; temp += TEMP_STEP; onTempChange(temp) },
-                modifier = Modifier.weight(1f)
-            ) {
-                ChoiceButton("그대로 두기", selected = keepTemp, enabled = !locked) {
-                    keepTemp = !keepTemp
-                    onTempChange(if (keepTemp) null else temp)
+    }
+    // 시트: 누르고 있는 동안만 움직여요 (떼는 신호를 놓쳐도 10초면 B가 알아서 멈춰요)
+    val seatCard: @Composable (Modifier) -> Unit = { m ->
+        MajiCard(m) {
+            Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                SubText("시트 앞뒤 · 누르는 동안 움직여요")
+                Text(
+                    seatText(seatMs), style = MajiTheme.type.title.copy(fontFeatureSettings = "tnum"), color = c.text,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    HoldButton(
+                        text = "◀ 뒤",
+                        enabled = !locked && seatMs > -ProfileRules.SEAT_MOVE_MAX_MS,
+                        onPress = { onSeatMoveStart(false) },
+                        onRelease = { seatMs = (seatMs + onSeatMoveStop()).coerceIn(-ProfileRules.SEAT_MOVE_MAX_MS, ProfileRules.SEAT_MOVE_MAX_MS) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    HoldButton(
+                        text = "앞 ▶",
+                        enabled = !locked && seatMs < ProfileRules.SEAT_MOVE_MAX_MS,
+                        onPress = { onSeatMoveStart(true) },
+                        onRelease = { seatMs = (seatMs + onSeatMoveStop()).coerceIn(-ProfileRules.SEAT_MOVE_MAX_MS, ProfileRules.SEAT_MOVE_MAX_MS) },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
+        }
+    }
 
-            // 시트: 누르고 있는 동안만 움직여요 (떼는 신호를 놓쳐도 10초면 B가 알아서 멈춰요)
-            OutlinedCard(shape = RoundedCornerShape(24.dp), modifier = Modifier.weight(1f)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
-                ) {
-                    Text(text = "시트 앞뒤", style = MaterialTheme.typography.titleLarge)
-                    Text(text = "누르고 있는 동안 움직여요", style = MaterialTheme.typography.bodyMedium)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        HoldButton(
-                            text = "◀ 뒤",
-                            enabled = !locked && seatMs > -ProfileRules.SEAT_MOVE_MAX_MS,
-                            onPress = { onSeatMoveStart(false) },
-                            onRelease = { seatMs = (seatMs + onSeatMoveStop()).coerceIn(-ProfileRules.SEAT_MOVE_MAX_MS, ProfileRules.SEAT_MOVE_MAX_MS) }
-                        )
-                        HoldButton(
-                            text = "앞 ▶",
-                            enabled = !locked && seatMs < ProfileRules.SEAT_MOVE_MAX_MS,
-                            onPress = { onSeatMoveStart(true) },
-                            onRelease = { seatMs = (seatMs + onSeatMoveStop()).coerceIn(-ProfileRules.SEAT_MOVE_MAX_MS, ProfileRules.SEAT_MOVE_MAX_MS) }
-                        )
-                    }
-                    Text(text = seatLabel(seatMs), style = MaterialTheme.typography.titleMedium)
+    MajiBackground(modifier = modifier, accent = MoodLightColors.of(profile.lightColor)) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wide = maxWidth.value >= WIDE_MIN_DP
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = if (wide) 72.dp else 44.dp, vertical = 48.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // 넓은 창: 제목·계절·카드·버튼을 한 덩어리로 시각적 중심(위:아래 4:6)에 둬요
+                if (wide) Spacer(Modifier.weight(0.4f))
+                Headline(title)
+                SubText(if (locked) "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 해 주세요." else subtitle)
+                // ── 계절
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Chip("겨울", selected = season == Season.WINTER, enabled = !locked) { selectSeason(Season.WINTER) }
+                    Chip("여름", selected = season == Season.SUMMER, enabled = !locked) { selectSeason(Season.SUMMER) }
+                    SubText("고른 계절에 저장돼요", Modifier.padding(start = 8.dp))
                 }
+                // ── 열선 | 온도 | 시트 (넓은 창은 나란히, 반쪽 창은 위아래)
+                if (wide) {
+                    // 카드 세 장은 내용 높이에 맞추고 서로 같은 높이로 (화면 높이를 꽉 채우면 가운데가 비어 보여요)
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        heatCard(Modifier.weight(1f).fillMaxHeight())
+                        tempCard(Modifier.weight(1f).fillMaxHeight())
+                        seatCard(Modifier.weight(1f).fillMaxHeight())
+                    }
+                } else {
+                    // 반쪽 창은 세로가 모자랄 수 있어서 카드만 스크롤해요 (버튼은 항상 보여요)
+                    Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        heatCard(Modifier.fillMaxWidth())
+                        tempCard(Modifier.fillMaxWidth())
+                        seatCard(Modifier.fillMaxWidth())
+                    }
+                }
+                // 버튼은 카드 줄과 같은 격자에 맞춰요: [다음에] = 카드 한 장 폭, [저장] = 카드 두 장 폭.
+                // 한쪽 끝으로 쏠리지 않고 카드 바로 아래 꽉 차게 놓여서, 운전석 쪽에서도 저장이 가까워요
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (wide) 24.dp else 16.dp)) {
+                    MajiGlassButton("다음에", onClick = onSkip, modifier = Modifier.weight(1f))
+                    MajiPrimaryButton(
+                        "저장",
+                        onClick = { onSave(season, Climate(seatHeat = heat, temperature = if (keepTemp) null else temp), seatMs) },
+                        enabled = !locked,
+                        modifier = Modifier.weight(if (wide) 2f else 1.5f)
+                    )
+                }
+                if (wide) Spacer(Modifier.weight(0.6f))
             }
         }
     }
 }
 
-/** 누르는 순간 onPress, 손을 떼면(또는 화면이 닫히면) onRelease */
+/** 누르는 순간 onPress, 손을 떼면(또는 화면이 닫히면) onRelease. 유리 캡슐 모양 */
 @Composable
-private fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRelease: () -> Unit) {
+private fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRelease: () -> Unit, modifier: Modifier = Modifier) {
     val press by rememberUpdatedState(onPress)
     val release by rememberUpdatedState(onRelease)
     var pressed by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(16.dp)
-    val color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f)
+    val c = MajiTheme.colors
 
     Box(
-        modifier = Modifier
-            .heightIn(min = 64.dp)
-            .widthIn(min = 96.dp)
-            .clip(shape)
-            .background(if (pressed) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (enabled) 1f else 0.38f), shape)
+        modifier = modifier
+            .heightIn(min = MinTouch)
+            .alpha(if (enabled) 1f else 0.4f)
+            .graphicsLayer { val s = if (pressed) 0.95f else 1f; scaleX = s; scaleY = s }  // 누르는 동안 살짝 작아져요
+            .clip(CircleShape)
+            .background(if (pressed) c.primary else c.glass)
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(onPress = {
@@ -290,18 +318,11 @@ private fun HoldButton(text: String, enabled: Boolean, onPress: () -> Unit, onRe
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, style = MaterialTheme.typography.titleLarge, color = color)
+        Text(text = text, style = MajiTheme.type.button, color = if (pressed) c.onPrimary else c.text)
     }
 }
 
-/** 0 → "원래 위치", +1500 → "앞으로 1.5초", -800 → "뒤로 0.8초" */
-private fun seatLabel(ms: Int): String = when {
-    ms == 0 -> "원래 위치"
-    ms > 0 -> String.format(Locale.US, "앞으로 %.1f초", ms / 1000f)
-    else -> String.format(Locale.US, "뒤로 %.1f초", -ms / 1000f)
-}
-
-/** 카드 하나: 제목, 지금 차 상태, [-] 값 [+] */
+/** 카드 하나: 제목·지금 차 상태, 가운데 값, [−] [+] */
 @Composable
 private fun SettingCard(
     title: String,
@@ -314,49 +335,58 @@ private fun SettingCard(
     modifier: Modifier = Modifier,
     extra: @Composable () -> Unit = {}
 ) {
-    OutlinedCard(shape = RoundedCornerShape(24.dp), modifier = modifier) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
-        ) {
-            Text(text = title, style = MaterialTheme.typography.titleLarge)
-            Text(text = now, style = MaterialTheme.typography.bodyMedium)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                OutlinedButton(onClick = onDown, enabled = canDown, modifier = Modifier.heightIn(min = 64.dp)) {
-                    Text("−", style = MaterialTheme.typography.headlineMedium)
-                }
+    val c = MajiTheme.colors
+    MajiCard(modifier) {
+        Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            SubText("$title · $now")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StepButton("−", canDown, onDown)
                 Text(
                     text = value,
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MajiTheme.type.title.copy(fontFeatureSettings = "tnum"),
+                    color = c.text,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.widthIn(min = 140.dp)
+                    modifier = Modifier.weight(1f).widthIn(min = 120.dp)
                 )
-                OutlinedButton(onClick = onUp, enabled = canUp, modifier = Modifier.heightIn(min = 64.dp)) {
-                    Text("+", style = MaterialTheme.typography.headlineMedium)
-                }
+                StepButton("+", canUp, onUp)
             }
             extra()
         }
     }
 }
 
-/** 고른 것은 꽉 찬 버튼, 안 고른 것은 테두리 버튼 */
 @Composable
-private fun ChoiceButton(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    if (selected) {
-        Button(onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 56.dp)) { Text(text) }
-    } else {
-        OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 56.dp)) { Text(text) }
+private fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
+    val c = MajiTheme.colors
+    Box(
+        Modifier
+            .size(MinTouch)
+            .alpha(if (enabled) 1f else 0.35f)
+            .clickable(enabled = enabled, onClick = onClick)
+            .clip(CircleShape)
+            .background(c.glass),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(symbol, style = MajiTheme.type.headline, color = c.text)
     }
 }
 
-private fun heatLabel(level: Int): String = when {
-    level < 0 -> "통풍 ${-level}단"
-    level == 0 -> "끔"
-    else -> "열선 ${level}단"
+/** 고른 것은 꽉 찬 캡슐, 안 고른 것은 유리 캡슐 */
+@Composable
+private fun Chip(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val c = MajiTheme.colors
+    Box(
+        Modifier
+            .heightIn(min = MinTouch)
+            .alpha(if (enabled) 1f else 0.4f)
+            .clickable(enabled = enabled, onClick = onClick)
+            .clip(CircleShape)
+            .background(if (selected) c.primary else c.glass)
+            .padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, style = MajiTheme.type.button, color = if (selected) c.onPrimary else c.text)
+    }
 }
 
 private fun tempLabel(c: Float): String = String.format(Locale.US, "%.1f℃", c)
@@ -368,42 +398,20 @@ private fun seasonName(s: Season): String = if (s == Season.WINTER) "겨울" els
 private val seatPreviewProfiles = FakeProfileRepository.samples()
     .mapIndexed { i, p -> p.copy(id = i + 1L) }   // 1 엄마, 2 딸(여름 없음), 3 여자친구(둘 다 없음)
 
-@Preview(name = "처음 탐 - 여자친구", showBackground = true, widthDp = 1280, heightDp = 720)
+@Preview(name = "처음 맞이 · 넓은 창", widthDp = 1682, heightDp = 1120)
 @Composable
-private fun FirstRidePreview() {
-    MaterialTheme {
-        Surface {
-            SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 21.5f, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
-        }
-    }
+private fun FirstRidePreview() = MajiTheme(ThemeMode.LIGHT) {
+    SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 21.5f, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
 }
 
-@Preview(name = "계절 바뀜 - 딸 여름", showBackground = true, widthDp = 1280, heightDp = 720)
+@Preview(name = "계절 바뀜 · 반쪽 창 · 밤", widthDp = 841, heightDp = 1120)
 @Composable
-private fun SeasonChangedPreview() {
-    MaterialTheme {
-        Surface {
-            SeatSetupScreen(seatPreviewProfiles[1], Season.SUMMER, -1, null, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
-        }
-    }
+private fun SeasonChangedPreview() = MajiTheme(ThemeMode.DARK) {
+    SeatSetupScreen(seatPreviewProfiles[1], Season.SUMMER, -1, null, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
 }
 
-@Preview(name = "다시 맞추기 - 엄마", showBackground = true, widthDp = 1280, heightDp = 720)
+@Preview(name = "주행 중 · 반쪽 창", widthDp = 841, heightDp = 1120)
 @Composable
-private fun AdjustPreview() {
-    MaterialTheme {
-        Surface {
-            SeatSetupScreen(seatPreviewProfiles[0], Season.WINTER, 3, 24f, false, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
-        }
-    }
-}
-
-@Preview(name = "주행 중", showBackground = true, widthDp = 1280, heightDp = 720)
-@Composable
-private fun SeatDrivingPreview() {
-    MaterialTheme {
-        Surface {
-            SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 22f, true, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
-        }
-    }
+private fun SeatDrivingPreview() = MajiTheme(ThemeMode.LIGHT) {
+    SeatSetupScreen(seatPreviewProfiles[2], Season.WINTER, 0, 22f, true, {}, {}, {}, { 0 }, { _, _, _ -> }, {})
 }

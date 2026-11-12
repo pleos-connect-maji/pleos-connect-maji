@@ -1,5 +1,6 @@
 package com.maji.ui.theme
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -31,7 +32,10 @@ fun MajiTheme(mode: ThemeMode = ThemeMode.AUTO, content: @Composable () -> Unit)
         )
     }
     CompositionLocalProvider(LocalMajiColors provides colors, LocalMajiType provides DefaultMajiType) {
-        MaterialTheme(colorScheme = material, content = content)
+        MaterialTheme(colorScheme = material) {
+            // MaterialTheme이 넣는 기본 물결(회색 네모) 대신 맞이 누름 효과를 써요
+            CompositionLocalProvider(LocalIndication provides MajiPressIndication, content = content)
+        }
     }
 }
 
