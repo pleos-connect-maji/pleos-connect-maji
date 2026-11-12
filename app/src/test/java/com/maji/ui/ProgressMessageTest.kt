@@ -23,7 +23,7 @@ class ProgressMessageTest {
         assertEquals(ProgressCopy("엄마를\n맞이하러 가는 중", null), progressCopy(MajiStep.HEADING, "엄마", drivingRestricted = true))
         assertEquals(ProgressCopy("엄마를 맞이할\n준비 중이에요", "열선·온도·시트를 맞추고 있어요"), progressCopy(MajiStep.PREPARING, "엄마", false))
         assertEquals(ProgressCopy("엄마, 어서 와요", "자리를 맞춰 뒀어요"), progressCopy(MajiStep.BOARDED, "엄마", false))
-        assertEquals(ProgressCopy("오늘도\n잘 다녀왔어요", "다음에도 엄마 자리를 준비해 둘게요"), progressCopy(MajiStep.FINISHED, "엄마", false))
+        assertEquals(ProgressCopy("오늘도\n잘 다녀왔어요", "자리를 원래대로 돌리고 있어요\n다음에도 엄마 자리를 준비해 둘게요"), progressCopy(MajiStep.FINISHED, "엄마", false))
     }
 
     @Test

@@ -76,7 +76,8 @@ fun progressCopy(step: MajiStep, name: String, drivingRestricted: Boolean, fallb
             else ProgressCopy("${josa(name, "이", "가")} 다 내리면\n눌러 주세요", null)  // "자리를 원래대로 돌려요"는 타일 안에
         MajiStep.FINISHED ->
             if (fallback) ProgressCopy("오늘도\n잘 다녀왔어요", "자리는 직접 원래대로 돌려 주세요")
-            else ProgressCopy("오늘도\n잘 다녀왔어요", "다음에도 $name 자리를 준비해 둘게요")
+            // 원위치 복구는 "원래대로 돌리기"를 누른 순간 시작돼요(시트는 몇 초 걸려요). 그걸 먼저 알려요
+            else ProgressCopy("오늘도\n잘 다녀왔어요", "자리를 원래대로 돌리고 있어요\n다음에도 $name 자리를 준비해 둘게요")
     }
 
 /** 단계 표시에서 지금 위치 (출발 0 · 도착 1 · 탑승 2 · 함께 3) */
