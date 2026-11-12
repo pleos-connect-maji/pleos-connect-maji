@@ -76,7 +76,6 @@ import kotlinx.coroutines.launch
 //   ...Route  = DB에서 읽고 저장하는 부분 (MainActivity가 불러요)
 //   ...Screen = 화면만 그리는 부분 (미리보기에도 써요)
 
-const val MAX_PROFILES = 3
 
 private const val BRIGHTNESS_STEP = 10
 
