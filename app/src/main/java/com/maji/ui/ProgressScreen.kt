@@ -273,12 +273,14 @@ private fun FinishedView(copy: ProgressCopy, color: androidx.compose.ui.graphics
 /**
  * 완료 화면의 "처음으로" 타일. 가늘고 긴 캡슐 대신 손바닥만 한 스쿼클 타일이라
  * 운전 중 힐끗 봐도 어디를 누를지 바로 보이고, 손이 대충 가도 맞아요(Android for Cars 큰 터치).
- * 진한 채움 대신 반투명 유리 + 그 사람 무드등 색 화살표 원이라 화면 분위기와 이어져요.
+ * 반투명 유리 위로 오른쪽 아래에서 그 사람 무드등 색 빛이 번지고, 그 빛 위에 화살표를 선으로 그려요
+ * (딱딱한 동그라미 버튼 대신, 맞이 화면 곳곳의 "빛이 새어 나오는" 느낌과 같게).
  */
 @Composable
 private fun HomeTile(onClick: () -> Unit, accent: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
     val c = MajiTheme.colors
     val shape = SquircleShape(48.dp)
+    val arrowColor = androidx.compose.ui.graphics.lerp(accent, androidx.compose.ui.graphics.Color.Black, if (c.isDark) 0.1f else 0.72f)
     Box(
         modifier
             .clickable(onClick = onClick)
@@ -286,21 +288,32 @@ private fun HomeTile(onClick: () -> Unit, accent: androidx.compose.ui.graphics.C
             .clip(shape)
             .background(c.glass)
             .drawWithContent {
-                // 위쪽 옅은 빛으로 유리 두께감
+                // 위쪽 옅은 빛(유리 두께) + 오른쪽 아래에서 번지는 그 사람 색 빛
                 drawRect(Brush.verticalGradient(0f to c.glassHighlight.copy(alpha = 0.5f), 0.45f to androidx.compose.ui.graphics.Color.Transparent))
+                drawRect(
+                    Brush.radialGradient(
+                        0f to accent.copy(alpha = if (c.isDark) 0.55f else 0.7f),
+                        0.55f to accent.copy(alpha = if (c.isDark) 0.18f else 0.22f),
+                        1f to androidx.compose.ui.graphics.Color.Transparent,
+                        center = androidx.compose.ui.geometry.Offset(size.width * 0.92f, size.height * 0.95f),
+                        radius = size.width * 0.75f
+                    )
+                )
                 drawContent()
             }
             .padding(40.dp)
     ) {
-        Column(Modifier.align(Alignment.TopStart), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.align(Alignment.TopStart), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("처음으로", style = MajiTheme.type.headline, color = c.text)
-            Text("누구를 맞이할지 고르는 화면", style = MajiTheme.type.caption, color = c.textSub)
+            Text("다음엔 누구를 맞이할까요?", style = MajiTheme.type.body, color = c.textSub)
         }
-        Box(
-            Modifier.align(Alignment.BottomEnd).size(88.dp).clip(CircleShape).background(accent),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("→", style = MajiTheme.type.title, color = androidx.compose.ui.graphics.lerp(accent, androidx.compose.ui.graphics.Color.Black, 0.78f))
+        // 화살표: 글자 대신 둥근 끝 선으로 (가로선 + 꺾쇠)
+        androidx.compose.foundation.Canvas(Modifier.align(Alignment.BottomEnd).size(64.dp)) {
+            val w = size.width; val h = size.height; val sw = 6.dp.toPx()
+            val y = h / 2
+            drawLine(arrowColor, androidx.compose.ui.geometry.Offset(w * 0.12f, y), androidx.compose.ui.geometry.Offset(w * 0.86f, y), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(arrowColor, androidx.compose.ui.geometry.Offset(w * 0.56f, h * 0.22f), androidx.compose.ui.geometry.Offset(w * 0.86f, y), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(arrowColor, androidx.compose.ui.geometry.Offset(w * 0.56f, h * 0.78f), androidx.compose.ui.geometry.Offset(w * 0.86f, y), sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         }
     }
 }
