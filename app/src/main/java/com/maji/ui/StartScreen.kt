@@ -112,12 +112,12 @@ fun StartScreen(
             val wide = maxWidth.value >= WIDE_MIN_DP
             val side = if (wide) 72.dp else 44.dp
             val cardWidth: Dp = if (wide) 360.dp else (maxWidth * 0.62f)
-            Column(Modifier.fillMaxSize().padding(vertical = 56.dp), verticalArrangement = Arrangement.spacedBy(32.dp)) {
-                Column(Modifier.padding(horizontal = side).padding(end = 280.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // 제목과 카드를 한 덩어리로 묶어 화면 세로 가운데에 둬요 (밑이 비어 보이지 않게)
+            Column(Modifier.fillMaxSize().padding(vertical = 56.dp), verticalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterVertically)) {
+                Column(Modifier.padding(horizontal = side), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Headline("누구를 맞이하러 갈까요?")
                     SubText(if (drivingRestricted) "주행 중에는 시작할 수 없어요. 차를 세운 뒤 눌러 주세요." else "카드를 누르면 바로 출발해요")
                 }
-                Spacer(Modifier.weight(1f))  // 카드 줄을 남은 공간 가운데에 둬요
                 LazyRow(
                     state = listState,
                     flingBehavior = rememberSnapFlingBehavior(listState),
@@ -146,7 +146,6 @@ fun StartScreen(
                     if (canAdd) item { AddPersonCard(enabled = !drivingRestricted, onAdd = onAdd, width = cardWidth) }
                 }
                 if (!wide) Dots(count = profiles.size + if (canAdd) 1 else 0, current = listState.firstVisibleItemIndex, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Spacer(Modifier.weight(1f))
             }
         }
     }
