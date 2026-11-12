@@ -470,15 +470,19 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     // 내릴 때 같은 값이면 이 %를 그대로 돌려줘요. 안 그러면 탈 때마다 밝기가 조금씩 내려가요 (#111)
     private var lastBrightnessPct: Int? = null
 
+    // 무드등 요청 번호. 빠르게 여러 번 바꾸면 앞 요청의 쓰기가 늦게 도착해도 무시해서 마지막 선택이 남아요 (#112 리뷰)
+    private var lightRequest = 0
+
     private fun applyAmbientLight(brightness: Int, argb: Int) {
         if (blockedByForce("무드등")) return
         lastBrightnessPct = brightness
+        val request = ++lightRequest
         val light = vehicle.getLight()
         val round = lightRound
         fun stale() = round != lightRound // 그사이 복구됐으면 더 진행하지 않아요
 
         fun write(area: SeatArea, value: Int) {
-            if (stale()) return
+            if (stale() || request != lightRequest) return  // 더 새 요청이 있으면 쓰지 않아요 (복구용 원래 값은 위에서 이미 기억)
             runCatching {
                 light.setAmbientLightSwitch(area, LightSwitch.ON, { _, _ -> },
                     { e -> Log.w(TAG, "[#12] 무드등 켜기 실패: ${e.message}") })
