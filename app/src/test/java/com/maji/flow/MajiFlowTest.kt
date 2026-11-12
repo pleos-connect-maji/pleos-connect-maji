@@ -1,5 +1,6 @@
 package com.maji.flow
 
+import com.maji.contract.AmbientLight
 import com.maji.contract.Climate
 import com.maji.contract.Greeter
 import com.maji.contract.MajiStep
@@ -325,6 +326,88 @@ class MajiFlowTest {
         assertEquals(Climate(seatHeat = 1, temperature = 15f), control.preparedClimate)
     }
 
+    // ───────────── 내릴 때 마지막 값 기억 (#111) ─────────────
+
+    private val newbie = Profile(id = 2, name = "아빠")  // 처음 맞이: 계절 값 없음, 시트 0
+    private fun rideToHome(p: Profile) {
+        flow.start(p)
+        flow.onParkChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+    }
+
+    @Test
+    fun `처음 맞이여도 타는 동안 바꾼 마지막 열선·온도를 내릴 때 저장해요`() = runBlocking {
+        repo.save(newbie)
+        rideToHome(newbie)
+        flow.onPassengerHeatChanged(2)
+        flow.onPassengerHeatChanged(-1)        // 또 바꿈 → 마지막 값(통풍 1단)
+        flow.onPassengerTemperatureChanged(21.5f)
+        flow.finish()
+
+        assertEquals(Climate(seatHeat = -1, temperature = 21.5f), repo.get(2)!!.winter)
+    }
+
+    @Test
+    fun `처음 맞이에서 아무것도 안 바꾸면 계절 값을 만들지 않아요`() = runBlocking {
+        repo.save(newbie)
+        rideToHome(newbie)
+        flow.finish()
+
+        assertEquals(null, repo.get(2)!!.winter)
+    }
+
+    @Test
+    fun `탄 뒤에 시트를 움직였으면 내릴 때 위치를 저장해요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        control.seatMoved = 300                // 준비가 문 열림에 끊겨 300ms만 움직임
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        control.seatMoved = 1200               // 타는 중 앱으로 앞으로 더
+        flow.finish()
+
+        assertEquals(1200, repo.get(1)!!.seatMoveMs)
+    }
+
+    @Test
+    fun `탄 뒤에 시트를 안 움직였으면 끊긴 준비 값으로 덮어쓰지 않아요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        control.seatMoved = 300
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        flow.finish()
+
+        assertEquals(500, repo.get(1)!!.seatMoveMs)
+    }
+
+    @Test
+    fun `함께 가는 중에 바꾼 무드등을 복구 전에 읽어서 저장해요`() = runBlocking {
+        rideToHome(mom)
+        control.ambient = AmbientLight(color = 0xFF6FB2FF.toInt(), brightness = 60)
+        flow.finish()
+
+        val saved = repo.get(1)!!
+        assertEquals(0xFF6FB2FF.toInt(), saved.lightColor)
+        assertEquals(60, saved.lightBrightness)
+        assertTrue(control.restoredAfterLightRead)
+        assertEquals(control.original, control.restored)
+    }
+
+    @Test
+    fun `맞이를 그만하면 무드등·시트도 저장하지 않아요`() = runBlocking {
+        flow.start(mom)
+        flow.onParkChanged(true)
+        flow.onPassengerDoorChanged(true)
+        control.seatMoved = 2000
+        control.ambient = AmbientLight(color = 0xFF6FB2FF.toInt(), brightness = 60)
+        flow.cancel()
+
+        assertEquals(500, repo.get(1)!!.seatMoveMs)
+        assertEquals(null, repo.get(1)!!.lightColor)
+    }
+
     // ───────────── 가짜 B·E ─────────────
 
     private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
@@ -334,7 +417,15 @@ class MajiFlowTest {
         var stopSeatCount = 0
         val rideHomeFor = mutableListOf<String>()
         var restored: PassengerState? = null
+        var seatMoved = 0                    // 원래 자리에서 움직인 시간 (#111)
+        var ambient: AmbientLight? = null    // 지금 차 무드등 (#111)
+        var restoredAfterLightRead = false
 
+        override fun seatMovedMs() = seatMoved
+        override fun readAmbientLight(onResult: (AmbientLight?) -> Unit) {
+            restoredAfterLightRead = restored == null  // 읽을 때 아직 복구 전이어야 해요
+            onResult(ambient)
+        }
         override fun isControlAvailable() = true
         override fun readPassengerState(onResult: (PassengerState) -> Unit) = onResult(original)
         override fun preparePassenger(climate: Climate, seatMoveMs: Int, onDone: () -> Unit) {

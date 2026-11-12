@@ -42,6 +42,9 @@ data class PassengerState(
     val windowPosition: Int?
 )
 
+/** 무드등 한 묶음 (#111). color = ARGB, brightness = 0..100 (앱 기준) */
+data class AmbientLight(val color: Int, val brightness: Int)
+
 /** 이 차에서 되는 기능 (A가 앱 시작 시 확인) */
 data class Capabilities(
     val seatMove: Boolean,
@@ -102,6 +105,15 @@ interface VehicleControl {
 
     /** 귀갓길: 창문·무드등 */
     fun applyRideHome(profile: Profile)
+
+    // ── 함께 가는 동안 자리 조절(#111) ──
+    // 기본 동작을 넣어 둬서 가짜 B(개발 화면·테스트)는 고치지 않아도 돼요.
+
+    /** 타는 중 무드등 바꾸기. 처음 바꾸기 전 값은 B가 기억했다가 restore 때 되돌려요 */
+    fun setAmbientLight(light: AmbientLight) {}
+
+    /** 지금 차의 무드등 읽기 (내릴 때 C가 마지막 값을 기억하려고). 못 읽으면 null. 꼭 한 번 불러요 (메인 스레드) */
+    fun readAmbientLight(onResult: (AmbientLight?) -> Unit) = onResult(null)
 
     /** 최종 하차 후 원래대로. 여러 번 불러도 안전해요 (이미 원위치면 시트는 안 움직임) */
     fun restore(state: PassengerState, onDone: () -> Unit = {})
