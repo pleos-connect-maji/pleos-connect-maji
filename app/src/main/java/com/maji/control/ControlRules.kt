@@ -23,6 +23,15 @@ object ControlRules {
     fun scaleBrightness(percent: Int, min: Int, max: Int): Int =
         min + (max - min) * percent.coerceIn(0, 100) / 100
 
+    /** 차 밝기 값을 앱 기준 0..100으로 (scaleBrightness의 반대). 범위가 이상하면 0 (#111) */
+    fun unscaleBrightness(value: Int, min: Int, max: Int): Int =
+        if (max <= min) 0 else Math.round((value.coerceIn(min, max) - min) * 100f / (max - min))
+
+    /** 읽은 차 밝기를 %로. 앱이 마지막으로 쓴 %와 같은 칸이면 그 %를 그대로 (단계가 거친 차에서 값이 줄어드는 걸 막아요) */
+    fun readBrightness(value: Int, min: Int, max: Int, lastWrittenPct: Int?): Int =
+        if (lastWrittenPct != null && scaleBrightness(lastWrittenPct, min, max) == value) lastWrittenPct
+        else unscaleBrightness(value, min, max)
+
     /**
      * 제어 가능 여부 (#13)
      * - 테스트용 "제어 불가 강제"(#97, debug 전용)가 켜져 있으면 불가

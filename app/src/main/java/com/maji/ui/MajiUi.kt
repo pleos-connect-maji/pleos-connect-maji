@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.remember
 import com.maji.ui.theme.MajiGlassButton
 import com.maji.ui.theme.MajiPrimaryButton
@@ -58,6 +60,29 @@ fun heatRow(level: Int): Pair<String, String> = when {
     else -> "열선" to "${level}단"
 }
 
+/** 열선 상태 (#111): 끔 / 열선 / 통풍. 차 값은 -3..3 하나지만 화면에서는 나눠서 골라요 */
+enum class HeatMode(val label: String) {
+    OFF("끔"), HEAT("열선"), VENT("통풍");
+
+    companion object {
+        fun of(level: Int): HeatMode = when {
+            level > 0 -> HEAT
+            level < 0 -> VENT
+            else -> OFF
+        }
+
+        /** 모드와 세기로 차 값을 만들어요. 끔에서 열선·통풍을 고르면 1단부터 */
+        fun levelOf(mode: HeatMode, strength: Int): Int = when (mode) {
+            OFF -> 0
+            HEAT -> strength.coerceIn(1, 3)
+            VENT -> -strength.coerceIn(1, 3)
+        }
+    }
+}
+
+/** 2 → "열선 2단", -1 → "통풍 1단", 0 → "끔" */
+fun heatText(level: Int): String = heatRow(level).let { (k, v) -> if (v == "끔") "끔" else "$k $v" }
+
 /** 22.0 → "22℃", 22.5 → "22.5℃" */
 fun tempText(celsius: Float): String =
     if (celsius % 1f == 0f) "${celsius.toInt()}℃" else String.format(Locale.US, "%.1f℃", celsius)
@@ -75,6 +100,17 @@ fun climateRows(climate: Climate?, seatMoveMs: Int = 0): List<Pair<String, Strin
     climate?.temperature?.let { add("온도" to tempText(it)) }
     if (seatMoveMs != 0) add("시트" to seatText(seatMoveMs))
 }
+
+/** 계절 값 한 줄: "열선 3단 · 26.5℃". 아직 안 맞춘 계절이면 null */
+fun seasonValueText(climate: Climate?): String? {
+    if (climate == null) return null
+    return buildList {
+        climate.seatHeat?.let { add(heatText(it).let { t -> if (t == "끔") "열선 끔" else t }) }
+        climate.temperature?.let { add(tempText(it)) }
+    }.ifEmpty { listOf("온도 그대로") }.joinToString(" · ")
+}
+
+fun seasonName(s: com.maji.contract.Season): String = if (s == com.maji.contract.Season.WINTER) "겨울" else "여름"
 
 fun initialOf(name: String): String = name.trim().take(1).ifEmpty { "?" }
 
@@ -95,7 +131,8 @@ fun MajiScaffold(
     modifier: Modifier = Modifier,
     top: @Composable ColumnScope.() -> Unit,
     content: @Composable ColumnScope.() -> Unit = {},
-    actions: (@Composable RowScope.() -> Unit)? = null
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    scrollContent: Boolean = false  // 반쪽 창에서 내용이 길면(자리 조절 #111) 위·내용만 스크롤, 버튼은 맨 아래 고정
 ) {
     MajiBackground(modifier = modifier, accent = accent) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -116,6 +153,16 @@ fun MajiScaffold(
                         }
                     }
                     Spacer(Modifier.weight(0.6f))
+                }
+            } else if (scrollContent) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 44.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp), content = top)
+                        content()
+                    }
+                    if (actions != null) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), content = actions)
+                    }
                 }
             } else {
                 Column(Modifier.fillMaxSize().padding(horizontal = 44.dp, vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {

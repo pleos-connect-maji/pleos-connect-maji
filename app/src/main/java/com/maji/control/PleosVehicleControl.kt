@@ -17,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import com.maji.contract.AmbientLight
 import com.maji.contract.Climate
 import com.maji.contract.PassengerState
 import com.maji.contract.Profile
@@ -417,9 +418,16 @@ class PleosVehicleControl(context: Context) : VehicleControl {
     override fun stopSeatMove(): Int {
         stopSeatAndMeasure()
         val moved = seatTracker.takeManualMs()
+        if (moved != 0) manualSeatMoves++
         Log.d(TAG, "[#46] 시트 뗌 → ${moved}ms")
         return moved
     }
+
+    // 앱 ◀▶로 실제로 움직인 횟수 (#112 리뷰). 자동 준비 출발이 늦게 거절돼 기록이 바뀌어도 이건 그대로라
+    // C가 "탄 뒤 앱으로 움직였는지"를 이걸로 판단해요
+    private var manualSeatMoves = 0
+
+    override fun manualSeatMoveCount(): Int = manualSeatMoves
 
     override fun setSeatHeat(level: Int) {
         applyHeat(level) {}
@@ -465,14 +473,23 @@ class PleosVehicleControl(context: Context) : VehicleControl {
      * brightness: 0..100 (앱 기준) → 차가 알려준 최소~최대 범위로 바꿔서 적용.
      * 바꾸기 전 밝기·색·켜짐 상태를 읽어 두되, 읽기가 실패해도 무드등은 켜요 (못 읽은 값만 null로 기억).
      */
+    // 마지막으로 쓴 밝기(앱 기준 %). 차 밝기 단계가 거칠면(예: 1..10) 읽어서 되돌린 %가 달라져서(30 → 3 → 22)
+    // 내릴 때 같은 값이면 이 %를 그대로 돌려줘요. 안 그러면 탈 때마다 밝기가 조금씩 내려가요 (#111)
+    private var lastBrightnessPct: Int? = null
+
+    // 무드등 요청 번호. 빠르게 여러 번 바꾸면 앞 요청의 쓰기가 늦게 도착해도 무시해서 마지막 선택이 남아요 (#112 리뷰)
+    private var lightRequest = 0
+
     private fun applyAmbientLight(brightness: Int, argb: Int) {
         if (blockedByForce("무드등")) return
+        lastBrightnessPct = brightness
+        val request = ++lightRequest
         val light = vehicle.getLight()
         val round = lightRound
         fun stale() = round != lightRound // 그사이 복구됐으면 더 진행하지 않아요
 
         fun write(area: SeatArea, value: Int) {
-            if (stale()) return
+            if (stale() || request != lightRequest) return  // 더 새 요청이 있으면 쓰지 않아요 (복구용 원래 값은 위에서 이미 기억)
             runCatching {
                 light.setAmbientLightSwitch(area, LightSwitch.ON, { _, _ -> },
                     { e -> Log.w(TAG, "[#12] 무드등 켜기 실패: ${e.message}") })
@@ -514,6 +531,51 @@ class PleosVehicleControl(context: Context) : VehicleControl {
             )
         } catch (e: Exception) {
             Log.w(TAG, "[#12] 무드등 호출 실패: ${e.message}")
+        }
+    }
+
+    // ───────── #111 함께 가는 동안 무드등 바꾸기 · 내릴 때 읽기 ─────────
+
+    // 귀갓길과 같은 길로 바꿔요. 바꾸기 전 값은 처음 한 번만 기억해서(putIfAbsent) 여러 번 바꿔도 복구는 탑승 전 값으로 가요
+    override fun setAmbientLight(light: AmbientLight) {
+        Log.d(TAG, "[#111] 무드등 바꿈: 색=${Integer.toHexString(light.color)}, 밝기=${light.brightness}")
+        applyAmbientLight(light.brightness, light.color)
+    }
+
+    // 지원 영역 중 첫 영역의 색·밝기를 읽어요 (귀갓길에 모든 영역을 같은 값으로 맞추니까 하나면 충분해요).
+    // 콜백이 안 오거나 실패해도 READ_TIMEOUT_MS 안에 꼭 한 번 알려줘요
+    override fun readAmbientLight(onResult: (AmbientLight?) -> Unit) {
+        var delivered = false
+        fun deliver(result: AmbientLight?) = main.post {
+            if (delivered) return@post
+            delivered = true
+            Log.d(TAG, "[#111] 무드등 읽음: $result")
+            onResult(result)
+        }
+        main.postDelayed({ deliver(null) }, READ_TIMEOUT_MS)
+        if (blockedByForce("무드등 읽기")) { deliver(null); return }
+        val light = vehicle.getLight()
+        try {
+            light.checkAmbientLightBrightnessCapabilities(
+                { _, bounds ->
+                    val (area, b) = bounds.entries.firstOrNull()?.toPair() ?: run { deliver(null); return@checkAmbientLightBrightnessCapabilities }
+                    runCatching {
+                        light.getAmbientLightBrightnessColor(area, { color ->
+                            runCatching {
+                                light.getAmbientLightBrightness(area, { value ->
+                                    // 알파가 빠져서 올 수 있어서 불투명으로 맞춰요. 값이 비어 오면 못 읽은 걸로
+                                    if (color == null || value == null) deliver(null)
+                                    else deliver(AmbientLight(color or 0xFF000000.toInt(), ControlRules.readBrightness(value, b.minValue, b.maxValue, lastBrightnessPct)))
+                                }, { deliver(null) })
+                            }.onFailure { deliver(null) }
+                        }, { deliver(null) })
+                    }.onFailure { deliver(null) }
+                },
+                { deliver(null) }
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "[#111] 무드등 읽기 실패: ${e.message}")
+            deliver(null)
         }
     }
 

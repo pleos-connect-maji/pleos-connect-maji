@@ -1,5 +1,6 @@
 package com.maji.flow
 
+import com.maji.contract.AmbientLight
 import com.maji.contract.Climate
 import com.maji.contract.Greeter
 import com.maji.contract.MajiFlow
@@ -41,6 +42,9 @@ class MajiFlowImpl(
     private var changedHeat: Int? = null
     private var changedTemperature: Float? = null
     private var currentSeason: Season? = null  // 맞이를 시작할 때 정한 계절 (학습과 복원에 씀)
+    private var finishing = false  // 내릴 때 무드등 읽기·복구가 끝나기 전엔 새 맞이를 받지 않아요 (#112 리뷰)
+    private var manualMovesAtBoarding: Int? = null  // 탈 때 앱 ◀▶ 이동 횟수 (#112 리뷰)
+    private var seatAtBoarding: Int? = null  // 문이 열려 시트를 멈춘 순간의 시트 기록. 내릴 때와 다르면 탄 뒤 움직인 것 (#111)
 
     init {
         // 시트 이동 기록이 바뀌면 저장해요 (#26, 근희 #86). 맞이 중일 때만 저장해요 (끝난 뒤에는 저장 기록을 다시 만들지 않아요)
@@ -57,6 +61,7 @@ class MajiFlowImpl(
     // 맞이 시작 화면에서 탑승자 버튼
     override fun start(profile: Profile) {
         if (current != MajiStep.IDLE && current != MajiStep.FINISHED) return  // 맞이 중이면 무시
+        if (finishing) return  // 지난 맞이 복구가 아직 안 끝났어요 (최대 2초)
         currentProfile = profile
         isPark = false
         savedState = null
@@ -64,6 +69,8 @@ class MajiFlowImpl(
         preparedClimate = null
         changedHeat = null
         changedTemperature = null
+        seatAtBoarding = null
+        manualMovesAtBoarding = null
         profile.place?.let { destinations?.requestDestination(it) }
         currentSeason = profiles.seasonFor(month())
         moveTo(MajiStep.HEADING)
@@ -91,23 +98,26 @@ class MajiFlowImpl(
         val p = currentProfile ?: return
         moveTo(MajiStep.BOARDED)
         control.stopSeat()
+        seatAtBoarding = control.seatMovedMs()  // 멈춘 뒤라 정산이 끝난 값이에요
+        manualMovesAtBoarding = control.manualSeatMoveCount()
         greeter.playGreeting(p) {
             greeter.playSong(p)
             clearSpecialGreeting(p)
         }
     }
 
+    // 탄 뒤(BOARDED, RIDING_HOME)에 바뀐 값만 탑승자가 바꾼 걸로 봐요. 준비 중에 우리가 맞춘 값은 빼요.
+    // 처음 맞이(준비 값 없음)여도 타는 동안 바꾼 마지막 값을 기록해서 내릴 때 저장해요 (#111)
     override fun onPassengerHeatChanged(level: Int) {
-        // 준비 중에 우리가 맞춘 값은 탑승자가 바꾼 게 아니고, 맞춘 값이 없으면 기준이 없어서 기록하지 않아요
-        val prepared = preparedClimate?.seatHeat ?: return
-        if (isPassengerSeated()) changedHeat = if (level != prepared) level else null  // 준비 값으로 되돌리면 기록을 지워요
+        if (!isPassengerSeated()) return
+        changedHeat = RideLearnRules.recordAfterBoarding(level, preparedClimate?.seatHeat)  // 준비 값으로 되돌리면 기록을 지워요
         persist()  // 학습 값을 저장해요 (#26)
     }
 
     override fun onPassengerTemperatureChanged(celsius: Float) {
         lastTemperature = celsius
-        val prepared = preparedClimate?.temperature ?: return
-        if (isPassengerSeated()) changedTemperature = if (celsius != prepared) celsius else null
+        if (!isPassengerSeated()) return
+        changedTemperature = RideLearnRules.recordAfterBoarding(celsius, preparedClimate?.temperature)
         persist()  // 학습 값을 저장해요 (#26)
     }
 
@@ -146,26 +156,48 @@ class MajiFlowImpl(
         }
     }
 
-    // 맞이 끝: 필요하면 바꾼 값을 학습하고, 원래 상태로 되돌리고, 안내음 정리
+    // 맞이 끝: 필요하면 마지막 값을 기억하고, 원래 상태로 되돌리고, 안내음 정리.
+    // 무드등은 함께 가는 중까지 갔을 때만 차에서 읽어요 (그 전엔 차의 원래 조명이라 기억하면 안 돼요).
+    // 읽은 뒤에 복구해야 탑승자가 고른 색이 남아 있어요. B가 꼭 한 번(최대 2초 안) 알려줘요.
     private fun endAndRestore(learn: Boolean) {
         if (current == MajiStep.IDLE || current == MajiStep.FINISHED) return
-        if (learn) learnChanges()
-        savedState?.let { control.restore(it) }
+        val p = currentProfile
+        val state = savedState
+        val readLight = learn && current == MajiStep.RIDING_HOME
+        val climate = Climate(seatHeat = changedHeat, temperature = changedTemperature)
+        val movedInApp = manualMovesAtBoarding?.let { control.manualSeatMoveCount() != it } ?: false
+        val seatMs = RideLearnRules.seatToLearn(seatAtBoarding, control.seatMovedMs(), movedInApp)
+        val season = currentSeason ?: profiles.seasonFor(month())
         savedState = null
         greeter.stopAll()
         destinations?.cancelDestination()
         moveTo(MajiStep.FINISHED)
+
+        fun restoreNow() { state?.let { control.restore(it) } }
+        if (!learn || p == null) return restoreNow()
+        if (readLight) {
+            finishing = true
+            control.readAmbientLight { light ->
+                finishing = false
+                learnLast(p, season, climate, seatMs, light)
+                restoreNow()
+            }
+        } else {
+            learnLast(p, season, climate, seatMs, null)
+            restoreNow()
+        }
     }
 
-    // 탑승자가 직접 바꾼 칸만 그 계절에 저장해요. 바뀐 칸이 없으면 저장하지 않아요.
-    private fun learnChanges() {
-        val p = currentProfile ?: return
-        val heat = changedHeat
-        val temperature = changedTemperature
-        if (heat == null && temperature == null) return
-        val season = currentSeason ?: profiles.seasonFor(month())
-        val changed = Climate(seatHeat = heat, temperature = temperature)
-        scope.launch { profiles.learn(p.id, season, changed) }
+    // 내릴 때 마지막 값 저장 (#111): 열선·온도는 그 계절에, 시트·무드등은 프로필에.
+    // 저장이 서로 덮어쓰지 않게 한 코루틴 안에서 차례로 해요.
+    private fun learnLast(p: Profile, season: Season, climate: Climate, seatMs: Int?, light: AmbientLight?) {
+        scope.launch {
+            if (climate.seatHeat != null || climate.temperature != null) profiles.learn(p.id, season, climate)
+            if (seatMs != null || light != null) {
+                val fresh = profiles.get(p.id) ?: return@launch
+                RideLearnRules.withRide(fresh, seatMs, light)?.let { profiles.save(it) }
+            }
+        }
     }
 
     // 오늘만의 인사는 한 번 읽고 나면 비워요 (#38)
