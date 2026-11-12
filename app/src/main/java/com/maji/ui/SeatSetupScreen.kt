@@ -41,6 +41,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.ColumnScope
 import com.maji.contract.Climate
 import com.maji.contract.Profile
 import com.maji.contract.ProfileRepository
@@ -165,16 +167,17 @@ fun SeatSetupScreen(
     val locked = drivingRestricted
     val c = MajiTheme.colors
 
-    val heatCard: @Composable (Modifier) -> Unit = { m ->
+    val heatCard: @Composable (Modifier, Boolean) -> Unit = { m, fill ->
         HeatCard(
             level = heat,
             now = "지금 차 " + (currentHeat?.let { heatText(it) } ?: "모름"),
             enabled = !locked,
             onChange = { heat = it; onHeatChange(it) },
-            modifier = m
+            modifier = m,
+            fill = fill
         )
     }
-    val tempCard: @Composable (Modifier) -> Unit = { m ->
+    val tempCard: @Composable (Modifier, Boolean) -> Unit = { m, fill ->
         SettingCard(
             title = "조수석 온도",
             now = "지금 차 " + (currentTemp?.let { tempLabel(it) } ?: "모름"),
@@ -184,7 +187,8 @@ fun SeatSetupScreen(
             canUp = !locked && temp < ProfileRules.TEMP_MAX,
             onDown = { keepTemp = false; temp -= TEMP_STEP; onTempChange(temp) },
             onUp = { keepTemp = false; temp += TEMP_STEP; onTempChange(temp) },
-            modifier = m
+            modifier = m,
+            fill = fill
         ) {
             // 처음 맞이에는 "그대로 둘" 값이 없어서 안 보여요. 계절이 바뀌었거나 다시 맞출 때만 (#111)
             if (!firstTime) {
@@ -196,12 +200,11 @@ fun SeatSetupScreen(
         }
     }
     // 시트: 누르고 있는 동안만 움직여요 (떼는 신호를 놓쳐도 10초면 B가 알아서 멈춰요)
-    val seatCard: @Composable (Modifier) -> Unit = { m ->
+    val seatCard: @Composable (Modifier, Boolean) -> Unit = { m, fill ->
         MajiCard(m) {
-            Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SubText("시트 앞뒤 · 누르는 동안 움직여요")
+            CardBody(fill, "시트 앞뒤 · 누르는 동안 움직여요") {
                 Text(
-                    seatText(seatMs), style = MajiTheme.type.title.copy(fontFeatureSettings = "tnum"), color = c.text,
+                    seatText(seatMs), style = MajiTheme.type.headline.copy(fontFeatureSettings = "tnum"), color = c.text,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -241,16 +244,16 @@ fun SeatSetupScreen(
                 if (wide) {
                     // 카드 세 장은 내용 높이에 맞추고 서로 같은 높이로 (화면 높이를 꽉 채우면 가운데가 비어 보여요)
                     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        heatCard(Modifier.weight(1f).fillMaxHeight())
-                        tempCard(Modifier.weight(1f).fillMaxHeight())
-                        seatCard(Modifier.weight(1f).fillMaxHeight())
+                        heatCard(Modifier.weight(1f).fillMaxHeight(), true)
+                        tempCard(Modifier.weight(1f).fillMaxHeight(), true)
+                        seatCard(Modifier.weight(1f).fillMaxHeight(), true)
                     }
                 } else {
                     // 반쪽 창은 세로가 모자랄 수 있어서 카드만 스크롤해요 (버튼은 항상 보여요)
                     Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        heatCard(Modifier.fillMaxWidth())
-                        tempCard(Modifier.fillMaxWidth())
-                        seatCard(Modifier.fillMaxWidth())
+                        heatCard(Modifier.fillMaxWidth(), false)
+                        tempCard(Modifier.fillMaxWidth(), false)
+                        seatCard(Modifier.fillMaxWidth(), false)
                     }
                 }
                 // 버튼은 카드 줄과 같은 격자에 맞춰요: [다음에] = 카드 한 장 폭, [저장] = 카드 두 장 폭.
@@ -315,34 +318,55 @@ internal fun SettingCard(
     onDown: () -> Unit,
     onUp: () -> Unit,
     modifier: Modifier = Modifier,
+    fill: Boolean = false,
     extra: @Composable () -> Unit = {}
 ) {
     val c = MajiTheme.colors
     MajiCard(modifier) {
-        Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SubText("$title · $now")
+        CardBody(fill, "$title · $now") {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StepButton("−", canDown, onDown)
+                StepButton("−", canDown, BigStep, onDown)
                 Text(
                     text = value,
-                    style = MajiTheme.type.title.copy(fontFeatureSettings = "tnum"),
+                    // 숫자는 크게, "그대로 두기" 같은 글자는 카드 폭에 맞게 한 단계 작게
+                    style = (if (value.any { it.isDigit() }) MajiTheme.type.headline else MajiTheme.type.title).copy(fontFeatureSettings = "tnum"),
                     color = c.text,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f).widthIn(min = 120.dp)
                 )
-                StepButton("+", canUp, onUp)
+                StepButton("+", canUp, BigStep, onUp)
             }
             extra()
         }
     }
 }
 
+// 자리 설정 카드의 −/+ 크기 (기본 76dp보다 크게, 차 안에서 누르기 쉽게)
+private val BigStep = 88.dp
+
+/**
+ * 카드 안 배치: 제목은 위에 고정(세 카드 제목 줄이 나란히), 조절 부분은 남은 공간의 가운데.
+ * fill = 넓은 창에서 세 카드를 같은 높이로 늘릴 때. 반쪽 창(스크롤)에서는 내용 높이 그대로
+ */
 @Composable
-internal fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
+private fun CardBody(fill: Boolean, title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.then(if (fill) Modifier.fillMaxHeight() else Modifier).padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        SubText(title)
+        if (fill) Spacer(Modifier.weight(1f))
+        content()
+        if (fill) Spacer(Modifier.weight(1f))
+    }
+}
+
+@Composable
+internal fun StepButton(symbol: String, enabled: Boolean, size: Dp = MinTouch, onClick: () -> Unit) {
     val c = MajiTheme.colors
     Box(
         Modifier
-            .size(MinTouch)
+            .size(size)
             .alpha(if (enabled) 1f else 0.35f)
             .clickable(enabled = enabled, onClick = onClick)
             .clip(CircleShape)
@@ -358,13 +382,11 @@ internal fun StepButton(symbol: String, enabled: Boolean, onClick: () -> Unit) {
  * [끔] [열선] [통풍]을 먼저 고르고, 세기(1~3단)는 따로 −/+ 로 맞춰요.
  */
 @Composable
-internal fun HeatCard(level: Int, now: String?, enabled: Boolean, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val c = MajiTheme.colors
+internal fun HeatCard(level: Int, now: String?, enabled: Boolean, onChange: (Int) -> Unit, modifier: Modifier = Modifier, fill: Boolean = false) {
     val mode = HeatMode.of(level)
     val strength = abs(level)
     MajiCard(modifier) {
-        Column(Modifier.padding(32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SubText(if (now != null) "열선·통풍 · $now" else "열선·통풍")
+        CardBody(fill, if (now != null) "열선·통풍 · $now" else "열선·통풍") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 HeatMode.entries.forEach { m ->
                     Chip(m.label, selected = mode == m, enabled = enabled, modifier = Modifier.weight(1f)) {
@@ -372,27 +394,28 @@ internal fun HeatCard(level: Int, now: String?, enabled: Boolean, onChange: (Int
                     }
                 }
             }
-            HeatStrength(level, enabled, onChange)
+            HeatStrength(level, enabled, onChange, large = true)
         }
     }
 }
 
 /** 세기 [−] 2단 [+]. 끔이면 숫자 대신 "끔"이고 버튼은 쉬어요 */
 @Composable
-internal fun HeatStrength(level: Int, enabled: Boolean, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun HeatStrength(level: Int, enabled: Boolean, onChange: (Int) -> Unit, modifier: Modifier = Modifier, large: Boolean = false) {
+    val step = if (large) BigStep else MinTouch
     val c = MajiTheme.colors
     val mode = HeatMode.of(level)
     val strength = abs(level)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        StepButton("−", enabled && mode != HeatMode.OFF && strength > 1) { onChange(HeatMode.levelOf(mode, strength - 1)) }
+        StepButton("−", enabled && mode != HeatMode.OFF && strength > 1, step) { onChange(HeatMode.levelOf(mode, strength - 1)) }
         Text(
             text = if (mode == HeatMode.OFF) "끔" else "${strength}단",
-            style = MajiTheme.type.title.copy(fontFeatureSettings = "tnum"),
+            style = (if (large) MajiTheme.type.headline else MajiTheme.type.title).copy(fontFeatureSettings = "tnum"),
             color = c.text.copy(alpha = if (mode == HeatMode.OFF) 0.5f else 1f),
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f).widthIn(min = 96.dp)
         )
-        StepButton("+", enabled && mode != HeatMode.OFF && strength < ProfileRules.HEAT_MAX) { onChange(HeatMode.levelOf(mode, strength + 1)) }
+        StepButton("+", enabled && mode != HeatMode.OFF && strength < ProfileRules.HEAT_MAX, step) { onChange(HeatMode.levelOf(mode, strength + 1)) }
     }
 }
 
