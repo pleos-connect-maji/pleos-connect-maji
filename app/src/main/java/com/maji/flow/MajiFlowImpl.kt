@@ -49,6 +49,7 @@ class MajiFlowImpl(
     private var waitingSeatSetup = false
     private var seatSetupSaved = false
     private var prepareFinished = false
+    private var runId = 0  // 맞이 회차. 지난 맞이의 늦은 상태 읽기 결과를 버리려고 써요 (#132)
 
     init {
         // 시트 이동 기록이 바뀌면 저장해요 (#26, B #86). 맞이 중일 때만 저장해요 (끝난 뒤에는 저장 기록을 다시 만들지 않아요)
@@ -80,6 +81,14 @@ class MajiFlowImpl(
         prepareFinished = false
         profile.place?.let { destinations?.requestDestination(it) }
         currentSeason = profiles.seasonFor(month())
+        // 원래 상태는 맞이를 시작할 때 읽어 둬요 (#132).
+        // 처음 맞이면 정차 중에 자리 설정 화면이 바로 떠서 차 값을 먼저 바꾸니까, 도착해서 읽으면 바뀐 값이 원래 값이 돼요.
+        val run = ++runId
+        control.readPassengerState { state ->
+            if (run != runId || savedState != null) return@readPassengerState
+            savedState = state.copy(temperature = state.temperature ?: startTemperature ?: lastTemperature)
+            if (isInProgress()) persist()
+        }
         moveTo(MajiStep.HEADING)
     }
 
@@ -155,9 +164,8 @@ class MajiFlowImpl(
             currentProfile = fresh
             moveTo(MajiStep.PREPARING)
 
-            // 준비 전에 원래 상태를 먼저 읽어 둬야 나중에 되돌릴 수 있어요
-            control.readPassengerState { state ->
-                savedState = state.copy(temperature = state.temperature ?: startTemperature ?: lastTemperature)
+            // 원래 상태는 시작할 때 읽어 둔 값을 써요 (#132). 아직 못 읽었으면(앱 재시작 등) 지금 읽어요
+            fun prepare() {
                 // 아직 설정 안 한 계절이면 값은 비우고 시트만 움직여요 (설정 화면 연결은 나중에)
                 val saved = profiles.climateFor(fresh, profiles.seasonFor(month()))
                 val climate = saved ?: Climate()
@@ -172,6 +180,17 @@ class MajiFlowImpl(
                     prepareFinished = true
                     announcePrepareDone()
                 }
+            }
+            savedState?.let { s ->
+                // 시작할 때 온도를 못 읽었으면(에뮬레이터) 그 뒤에 A가 알려준 온도로 채워요
+                if (s.temperature == null) savedState = s.copy(temperature = startTemperature ?: lastTemperature)
+                return@launch prepare()
+            }
+            control.readPassengerState { state ->
+                if (savedState == null) {
+                    savedState = state.copy(temperature = state.temperature ?: startTemperature ?: lastTemperature)
+                }
+                prepare()
             }
         }
     }
@@ -189,6 +208,7 @@ class MajiFlowImpl(
         val seatMs = RideLearnRules.seatToLearn(seatAtBoarding, control.seatMovedMs(), movedInApp)
         val season = currentSeason ?: profiles.seasonFor(month())
         savedState = null
+        runId++  // 아직 안 끝난 상태 읽기가 끝난 맞이에 원래 값을 다시 넣지 않게 해요
         greeter.stopAll()
         destinations?.cancelDestination()
         moveTo(MajiStep.FINISHED)
