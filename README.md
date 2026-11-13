@@ -34,8 +34,9 @@
 
 ## 🎞️ 시연 영상
 
-<!-- [TODO] 썸네일 이미지 docs/images/demo-thumbnail.png 와 영상 링크 -->
-[![맞이 시연 영상](docs/images/demo-thumbnail.png)]([TODO])
+[![맞이 시연 영상](https://img.youtube.com/vi/0cKsSiLcIhI/maxresdefault.jpg)](https://youtu.be/0cKsSiLcIhI)
+
+👉 이미지를 누르면 YouTube에서 영상이 열려요.
 
 <br>
 
