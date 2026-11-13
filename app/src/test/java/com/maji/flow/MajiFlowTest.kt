@@ -259,6 +259,38 @@ class MajiFlowTest {
         assertEquals(control.original, control.restored)
     }
 
+    // ───────────── 원래 상태는 시작할 때 (#132) ─────────────
+
+    @Test
+    fun `처음 맞이에서 자리 설정이 먼저 차를 바꿔도 내릴 때 맞이 전 상태로 되돌려요`() = runBlocking {
+        val before = control.original
+        val newbie = Profile(id = 2, name = "할머니")  // 이번 계절 값이 없어서 자리 설정 화면이 떠요
+        repo.save(newbie)
+        flow.start(newbie)
+
+        // 정차 중에 자리 설정 화면에서 누른 값이 차에 바로 반영됐어요
+        control.original = PassengerState(seatHeat = 1, temperature = 22.5f, windowPosition = 3)
+
+        flow.onParkChanged(true)
+        flow.onPassengerDoorChanged(true)
+        flow.onParkChanged(false)
+        flow.onParkChanged(true)
+        flow.finish()
+
+        assertEquals(before, control.restored)
+    }
+
+    @Test
+    fun `자리 설정 뒤 출발 전에 맞이를 그만해도 맞이 전 상태로 되돌려요`() {
+        val before = control.original
+        flow.start(mom)
+        control.original = PassengerState(seatHeat = 1, temperature = 22.5f, windowPosition = 3)
+
+        flow.cancel()
+
+        assertEquals(before, control.restored)
+    }
+
     // ───────────── 안내음 (E) ─────────────
 
     @Test
@@ -460,7 +492,7 @@ class MajiFlowTest {
 
     // ───────────── 가짜 B·E ─────────────
 
-    private class FakeVehicleControl(val original: PassengerState) : VehicleControl {
+    private class FakeVehicleControl(var original: PassengerState) : VehicleControl {
         var preparedClimate: Climate? = null
         var preparedSeatMoveMs: Int? = null
         var stopSeatCalled = false
