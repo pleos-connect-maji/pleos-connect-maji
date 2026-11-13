@@ -6,9 +6,6 @@
 
 **데리러 가는 길에 차가 먼저 맞을 준비를 합니다**
 
-기다리는 동안 소중한 가족의 자리를 미리 맞춰 두고<br>
-문이 열리는 순간 먼저 인사를 건네는 마중 차량용 앱입니다.
-
 ![Android Automotive](https://img.shields.io/badge/Android_Automotive-API_34-3DDC84?logo=android&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white)
 ![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-Material3-4285F4?logo=jetpackcompose&logoColor=white)
@@ -31,13 +28,13 @@
 
 [![맞이 시연 영상](https://img.youtube.com/vi/0cKsSiLcIhI/maxresdefault.jpg)](https://youtu.be/0cKsSiLcIhI)
 
-👉 이미지를 누르면 YouTube에서 영상이 열려요.
+👉 이미지를 누르면 YouTube에서 영상이 열립니다.
 
 <br>
 
 ## 🔥 주요 기능
 
-✅ 구현 · 🧪 에뮬레이터 검증 · 🔜 예정
+✅ 구현 · 🧪 에뮬레이터 검증
 
 | 기능 | 설명 | 상태 |
 | --- | --- | :---: |
@@ -110,8 +107,7 @@ stateDiagram-v2
 - 차량 신호는 Virtual Console(`http://127.0.0.1:8088/`)에서 바꿉니다. 조수석은 FR · PASSENGER입니다.
 - Pleos SDK는 `nexus-playground.pleos.ai` 저장소에서 받습니다. 별도 인증 정보는 필요 없습니다.
 
-<details>
-<summary>사용 권한</summary>
+**사용 권한**
 
 | 권한 | 용도 |
 | --- | --- |
@@ -120,9 +116,7 @@ stateDiagram-v2
 | `pleos.car.permission.CAR_WINDOWS` · `CONTROL_CAR_WINDOWS` | 조수석 창문 |
 | `pleos.car.permission.CAR_DOORS` | 조수석 문 열림 |
 | `pleos.car.permission.CAR_DRIVE` · `CAR_POWERTRAIN` | 기어(P단) · 주행 상태 |
-| `pleos.car.permission.NAVI_ROUTE` | 내비 목적지 (🔜 예정) |
 
-</details>
 
 <br>
 
@@ -230,12 +224,12 @@ cd pleos-connect-maji
 ```
 app/src/main/java/com/maji/
 ├── contract/   # 팀 함수 약속과 공통 데이터 (Profile · Climate · MajiStep)
-├── signal/     # 차량 신호: 기어 · 조수석 문 · 열선·온도 변화 · 지원 기능 확인
-├── control/    # 차량 제어: 시트 · 열선·통풍 · 온도 · 창문 · 원래 상태 복구
-├── flow/       # 맞이 단계 흐름 · 학습 규칙 · 진행 상태 저장과 복원
-├── profile/    # 탑승자 프로필 저장 (Room) · 계절 프리셋 · 값 범위 검사
-├── voice/      # 인사 · 안내 음성 · 오디오 포커스
-├── ui/         # 화면 (홈 · 진행 · 자리 설정 · 탑승자 관리) · 디자인 테마
+├── signal/     # 차량 신호: 기어 , 조수석 문 , 열선·온도 변화 , 지원 기능 확인
+├── control/    # 차량 제어: 시트 , 열선·통풍 , 온도 , 창문 , 원래 상태 복구
+├── flow/       # 맞이 단계 흐름 , 학습 규칙 , 진행 상태 저장과 복원
+├── profile/    # 탑승자 프로필 저장 (Room) , 계절 프리셋 , 값 범위 검사
+├── voice/      # 인사 , 안내 음성 , 오디오 포커스
+├── ui/         # 화면 (홈 , 진행 , 자리 설정 , 탑승자 관리) , 디자인 테마
 └── MainActivity.kt
 app/src/debug/  # 개발용 확인 화면 (debug 빌드에만 포함)
 app/src/test/   # 단위 테스트
@@ -250,8 +244,8 @@ docs/           # 설계 · 테스트 문서
 
 | 역할 | 담당 |
 | --- | --- |
-| 차량 신호 | P단 · 조수석 문 · 열선·온도 변화 감지, 지원 기능 확인, 주행 중 화면 잠금 |
-| 차량 제어 · 디자인 | 시트 · 열선·통풍 · 온도 · 창문 제어, 원래 상태 저장·복구, 대체 모드, 화면 디자인, 타는 동안 자리 조절 |
+| 차량 신호 | P단 , 조수석 문 , 열선·온도 변화 감지, 지원 기능 확인, 주행 중 화면 잠금 |
+| 차량 제어 · 디자인 | 시트 , 열선·통풍 , 온도 , 창문 제어, 원래 상태 저장·복구, 대체 모드, 화면 디자인, 타는 동안 자리 조절 |
 | 맞이 흐름 | 단계 관리, 시작·진행 화면, 최종 하차 버튼, 학습 연결, 앱 재시작 후 이어받기 |
 | 프로필 | 프로필 저장, 탑승자 관리·자리 설정 화면, 계절 프리셋, 학습 규칙 |
 | 음성 · 통합 | 인사 · 안내 음성, 오디오 포커스, 프로젝트 골격, GitHub 관리, README |
@@ -262,6 +256,6 @@ docs/           # 설계 · 테스트 문서
 
 | 단계 | 시기 | 내용 |
 | --- | --- | --- |
-| 1단계 | 출시 ~ 6개월 | 조수석 맞이 완성, 명절 귀성 · 손님 모시기 같은 한 번뿐인 마중까지 확대 |
+| 1단계 | 출시 ~ 6개월 | 조수석 맞이 완성, 명절 귀성 / 손님 모시기 같은 한 번뿐인 마중까지 확대 |
 | 2단계 | 6 ~ 18개월 | 뒷자리까지 넓히고, 반복 일정을 배워 "오늘도 맞이하실까요?" 먼저 제안 |
-| 3단계 | 18개월 ~ | 프로필을 계정에 연결해 렌터카 · 카셰어링 · 법인차 · 해외로 확장 |
+| 3단계 | 18개월 ~ | 프로필을 계정에 연결해 렌터카, 카셰어링 , 법인차 , 해외로 확장 |
