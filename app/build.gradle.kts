@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -17,8 +19,27 @@ android {
         versionName = "0.1.0"
     }
 
+    // release 서명 (#122): 키 파일·비밀번호는 저장소 밖에 두고 local.properties(커밋 안 됨)에서 읽어요.
+    // 키가 없는 PC(팀원)에서는 디버그 키로 대신 서명해서 release 빌드가 막히지 않게 해요.
+    val localProps = Properties().apply {
+        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    }
+    val releaseStore = localProps.getProperty("maji.release.storeFile")?.let { file(it) }?.takeIf { it.exists() }
+
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = localProps.getProperty("maji.release.storePassword")
+                keyAlias = localProps.getProperty("maji.release.keyAlias")
+                keyPassword = localProps.getProperty("maji.release.keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
