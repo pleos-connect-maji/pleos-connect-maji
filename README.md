@@ -194,13 +194,18 @@ open http://127.0.0.1:8088/
 
 ## 📦 APK
 
-| 항목 | 위치 |
+| 항목 | 내용 |
 | --- | --- |
-| APK 파일 | [`apk/KITS_맞이_release.apk`](apk/KITS_맞이_release.apk) |
+| 파일 | [`apk/KITS_맞이_release.apk`](apk/KITS_맞이_release.apk) |
+| 버전 | 0.1.0 · release 서명 |
+| 크기 | 약 41MB |
+| 실행 환경 | Pleos Connect Emulator 2.1 (Android API 34 · Automotive) — [테스트 환경](#-테스트-환경) 참고 |
 
 ```bash
 adb install apk/KITS_맞이_release.apk
 ```
+
+> 같은 기기에 디버그 버전이 이미 설치돼 있으면 서명이 달라 설치가 실패해요. `adb uninstall com.maji`로 지운 뒤 다시 설치하세요.
 
 <br>
 
