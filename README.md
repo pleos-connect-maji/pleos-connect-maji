@@ -143,11 +143,11 @@ stateDiagram-v2
 
 Android Studio가 필요합니다. 자세한 내용은 [Pleos Connect SDK·에뮬레이터 설정 문서](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)를 따릅니다.
 
-1. **Tools → SDK Manager → SDK Update Sites** 탭에서 **+**를 누르고 Pleos 시스템 이미지 주소를 추가합니다.
+1. **Tools → SDK Manager → SDK Update Sites** 탭에서 + 를 누르고 Pleos 시스템 이미지 주소를 추가합니다.
    - Apple Silicon Mac: `https://nexus-playground.pleos.ai/repository/raw-releases/connect-avd/2.x/crp-arm64-sys-img.xml`
    - 그 밖의 PC는 위 문서에 있는 주소를 씁니다.
 2. **SDK Platforms** 탭에서 **Show Package Details**를 켜고 Android API 34 아래 **Pleos Connect System Image**를 설치합니다.
-3. **Tools → Device Manager → Create device**에서 **Automotive → `Pleos Connect v2.1.0`**을 고르고 API 34 이미지로 만듭니다.
+3. **Tools → Device Manager → Create device**에서 Automotive → `Pleos Connect v2.1.0`을 고르고 API 34 이미지로 만듭니다.
 4. **Advanced Settings**에서 **Default boot = Cold**, **RAM = 4GB**로 바꿉니다. Quick boot면 차량 신호가 동작하지 않습니다.
 
 **3. 에뮬레이터 켜기**
@@ -224,12 +224,12 @@ cd pleos-connect-maji
 ```
 app/src/main/java/com/maji/
 ├── contract/   # 팀 함수 약속과 공통 데이터 (Profile · Climate · MajiStep)
-├── signal/     # 차량 신호: 기어 , 조수석 문 , 열선·온도 변화 , 지원 기능 확인
-├── control/    # 차량 제어: 시트 , 열선·통풍 , 온도 , 창문 , 원래 상태 복구
-├── flow/       # 맞이 단계 흐름 , 학습 규칙 , 진행 상태 저장과 복원
-├── profile/    # 탑승자 프로필 저장 (Room) , 계절 프리셋 , 값 범위 검사
-├── voice/      # 인사 , 안내 음성 , 오디오 포커스
-├── ui/         # 화면 (홈 , 진행 , 자리 설정 , 탑승자 관리) , 디자인 테마
+├── signal/     # 차량 신호: 기어, 조수석 문, 열선·온도 변화, 지원 기능 확인
+├── control/    # 차량 제어: 시트, 열선·통풍, 온도, 창문, 원래 상태 복구
+├── flow/       # 맞이 단계 흐름, 학습 규칙, 진행 상태 저장과 복원
+├── profile/    # 탑승자 프로필 저장 (Room), 계절 프리셋, 값 범위 검사
+├── voice/      # 인사, 안내 음성, 오디오 포커스
+├── ui/         # 화면 (홈, 진행, 자리 설정, 탑승자 관리), 디자인 테마
 └── MainActivity.kt
 app/src/debug/  # 개발용 확인 화면 (debug 빌드에만 포함)
 app/src/test/   # 단위 테스트
@@ -244,8 +244,8 @@ docs/           # 설계 · 테스트 문서
 
 | 역할 | 담당 |
 | --- | --- |
-| 차량 신호 | P단 , 조수석 문 , 열선·온도 변화 감지, 지원 기능 확인, 주행 중 화면 잠금 |
-| 차량 제어 · 디자인 | 시트 , 열선·통풍 , 온도 , 창문 제어, 원래 상태 저장·복구, 대체 모드, 화면 디자인, 타는 동안 자리 조절 |
+| 차량 신호 | P단, 조수석 문, 열선·온도 변화 감지, 지원 기능 확인, 주행 중 화면 잠금 |
+| 차량 제어 · 디자인 | 시트, 열선·통풍, 온도, 창문 제어, 원래 상태 저장·복구, 대체 모드, 화면 디자인, 타는 동안 자리 조절 |
 | 맞이 흐름 | 단계 관리, 시작·진행 화면, 최종 하차 버튼, 학습 연결, 앱 재시작 후 이어받기 |
 | 프로필 | 프로필 저장, 탑승자 관리·자리 설정 화면, 계절 프리셋, 학습 규칙 |
 | 음성 · 통합 | 인사 · 안내 음성, 오디오 포커스, 프로젝트 골격, GitHub 관리, README |
@@ -258,4 +258,4 @@ docs/           # 설계 · 테스트 문서
 | --- | --- | --- |
 | 1단계 | 출시 ~ 6개월 | 조수석 맞이 완성, 명절 귀성 / 손님 모시기 같은 한 번뿐인 마중까지 확대 |
 | 2단계 | 6 ~ 18개월 | 뒷자리까지 넓히고, 반복 일정을 배워 "오늘도 맞이하실까요?" 먼저 제안 |
-| 3단계 | 18개월 ~ | 프로필을 계정에 연결해 렌터카, 카셰어링 , 법인차 , 해외로 확장 |
+| 3단계 | 18개월 ~ | 프로필을 계정에 연결해 렌터카, 카셰어링, 법인차, 해외로 확장 |
