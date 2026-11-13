@@ -104,10 +104,8 @@ fun StartScreen(
     onAdd: () -> Unit = {},
     month: Int = LocalDate.now().monthValue
 ) {
-    if (profiles.isEmpty()) {
-        EmptyHome(drivingRestricted, onAdd, modifier)
-        return
-    }
+    // 사람이 없어도 따로 빈 화면을 두지 않고, 같은 캐러셀에 "맞이할 사람 추가" 카드 한 장만 보여요 (#118)
+    val empty = profiles.isEmpty()
     val listState = rememberLazyListState()
     // 화면 가운데에 가장 가까운 카드 = 지금 보고 있는 사람. 그 사람 무드등 색이 화면 빛이 돼요
     val centered by remember {
@@ -119,7 +117,7 @@ fun StartScreen(
                 .minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - mid) }?.index ?: 0
         }
     }
-    val accent = MoodLightColors.of(profiles[centered.coerceIn(0, profiles.lastIndex)].lightColor)
+    val accent = if (empty) null else MoodLightColors.of(profiles[centered.coerceIn(0, profiles.lastIndex)].lightColor)
     val season = ProfileRules.seasonFor(month)
     val presets = stringArrayResource(R.array.greeting_presets).toList()
 
@@ -133,8 +131,14 @@ fun StartScreen(
             Column(Modifier.fillMaxSize().padding(vertical = 56.dp), verticalArrangement = Arrangement.spacedBy(40.dp)) {
                 Spacer(Modifier.weight(0.4f))
                 Column(Modifier.padding(horizontal = side), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Headline("누구를 맞이하러 갈까요?")
-                    SubText(if (drivingRestricted) "주행 중에는 시작할 수 없어요. 차를 세운 뒤 눌러 주세요." else "카드를 누르면 바로 출발해요")
+                    Headline(if (empty) "맞이할 사람을 추가해 보세요" else "누구를 맞이하러 갈까요?")
+                    SubText(
+                        when {
+                            drivingRestricted -> "주행 중에는 바꿀 수 없어요. 차를 세운 뒤 눌러 주세요."
+                            empty -> "한 번 맞춰 두면 맞이할 때마다 자리와 불빛을 준비해요"
+                            else -> "카드를 누르면 바로 출발해요"
+                        }
+                    )
                 }
                 LazyRow(
                     state = listState,
@@ -228,22 +232,6 @@ private fun AddPersonCard(enabled: Boolean, onAdd: () -> Unit, width: Dp) {
             SubText("자주 맞이하는 사람을\n넣어 보세요")
         }
     }
-}
-
-@Composable
-private fun EmptyHome(drivingRestricted: Boolean, onAdd: () -> Unit, modifier: Modifier) {
-    MajiScaffold(
-        accent = null,
-        modifier = modifier,
-        top = {
-            Box(Modifier.size(104.dp).clip(CircleShape).background(MajiTheme.colors.glass), contentAlignment = Alignment.Center) {
-                Text("+", style = MajiTheme.type.headline, color = MajiTheme.colors.text)
-            }
-            Headline("맞이할 사람을\n추가해 보세요")
-            SubText("한 번 맞춰 두면 맞이할 때마다\n자리와 불빛을 준비해요")
-        },
-        actions = { MajiPrimaryButton("맞이할 사람 추가", onClick = onAdd, enabled = !drivingRestricted, modifier = Modifier.weight(1f)) }
-    )
 }
 
 @Composable
