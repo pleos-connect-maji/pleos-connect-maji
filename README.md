@@ -1,6 +1,5 @@
 <div align="center">
 
-<!-- [TODO] 대표 이미지: docs/images/banner.png -->
 <img src="docs/images/banner.png" alt="맞이 대표 이미지" width="100%">
 
 # 맞이
