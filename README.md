@@ -196,8 +196,7 @@ open http://127.0.0.1:8088/
 
 | 항목 | 위치 |
 | --- | --- |
-| APK 파일 | [`apk/KITS_맞이_release.apk`](apk/KITS_맞이_release.apk) [TODO] |
-| GitHub Release | [TODO] |
+| APK 파일 | [`apk/KITS_맞이_release.apk`](apk/KITS_맞이_release.apk) |
 
 ```bash
 adb install apk/KITS_맞이_release.apk
