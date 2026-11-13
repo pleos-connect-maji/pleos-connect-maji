@@ -146,31 +146,72 @@ stateDiagram-v2
 
 ## ⚙️ 실행 방법
 
-**1. 에뮬레이터 켜기**
+빌드 없이 **APK를 받아 에뮬레이터에 설치**하면 바로 실행할 수 있습니다. 소스에서 빌드하려면 [소스에서 빌드하기](#소스에서-빌드하기)를 보세요.
+
+### 📦 APK
+
+| 항목 | 내용 |
+| --- | --- |
+| 파일 | [`apk/KITS_맞이_release.apk`](apk/KITS_맞이_release.apk) |
+| 버전 | 0.1.0 · release 서명 |
+| 크기 | 약 41MB |
+| 실행 환경 | Pleos Connect Emulator 2.1 (Android API 34 · Automotive) — [테스트 환경](#-테스트-환경) 참고 |
+
+### APK로 실행하기
+
+**1. APK 받기**
+
+위 표의 파일 링크를 열고 오른쪽 위 **Download raw file**(⬇️)을 누릅니다. 저장소를 통째로 받았다면 `apk/` 폴더에 있습니다.
+
+**2. Pleos Connect 에뮬레이터 준비하기 (처음 한 번)**
+
+Android Studio가 필요합니다. 자세한 내용은 [Pleos Connect SDK·에뮬레이터 설정 문서](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)를 따릅니다.
+
+1. **Tools → SDK Manager → SDK Update Sites** 탭에서 **+**를 누르고 Pleos 시스템 이미지 주소를 추가합니다.
+   - Apple Silicon Mac: `https://nexus-playground.pleos.ai/repository/raw-releases/connect-avd/2.x/crp-arm64-sys-img.xml`
+   - 그 밖의 PC는 위 문서에 있는 주소를 씁니다.
+2. **SDK Platforms** 탭에서 **Show Package Details**를 켜고 Android API 34 아래 **Pleos Connect System Image**를 설치합니다.
+3. **Tools → Device Manager → Create device**에서 **Automotive → `Pleos Connect v2.1.0`**을 고르고 API 34 이미지로 만듭니다.
+4. **Advanced Settings**에서 **Default boot = Cold**, **RAM = 4GB**로 바꿉니다. Quick boot면 차량 신호가 동작하지 않습니다.
+
+**3. 에뮬레이터 켜기**
+
+Device Manager에서 ▶를 누르거나 터미널에서 실행합니다.
 
 ```bash
-# Cold boot + Vulkan 끄기 (Apple Silicon)
+# Cold boot + Vulkan 끄기 (Apple Silicon은 Vulkan을 꺼야 멈추지 않습니다)
 $ANDROID_HOME/emulator/emulator -avd <Pleos AVD 이름> -no-snapshot -feature -Vulkan &
 adb wait-for-device
 ```
 
-**2. 빌드하고 설치하기**
+**4. APK 설치하기**
+
+받은 APK 파일을 에뮬레이터 화면에 **끌어다 놓거나** 터미널에서 설치합니다.
 
 ```bash
-git clone https://github.com/pleos-connect-maji/pleos-connect-maji.git
-cd pleos-connect-maji
-./gradlew installDebug
+adb install KITS_맞이_release.apk
+```
+
+> 같은 기기에 디버그 버전이 이미 설치돼 있으면 서명이 달라 설치가 실패합니다. `adb uninstall com.maji`로 지운 뒤 다시 설치하세요.
+
+**5. 앱 열기**
+
+에뮬레이터 앱 목록에서 **맞이**를 누르거나 터미널에서 엽니다.
+
+```bash
 adb shell am start -n com.maji/.MainActivity
 ```
 
-**3. Virtual Console 열기**
+**6. Virtual Console 열기**
+
+차량 신호(기어 · 문 등)는 브라우저의 Virtual Console에서 바꿉니다.
 
 ```bash
 adb forward tcp:8088 tcp:8088
-open http://127.0.0.1:8088/
+open http://127.0.0.1:8088/   # Windows는 브라우저에서 주소를 직접 엽니다
 ```
 
-**4. 맞이 한 바퀴 돌려 보기**
+**7. 맞이 한 바퀴 돌려 보기**
 
 1. 기어를 **P**로 두고 "맞이할 사람 추가"로 탑승자를 만듭니다.
 2. 탑승자 카드의 **맞이하러 가기**를 누릅니다.
@@ -181,6 +222,16 @@ open http://127.0.0.1:8088/
 
 신호별로 바꾸는 곳과 로그 확인 방법은 [Virtual Console 신호 테스트 방법](docs/signal-test-guide.md)에 있습니다.
 
+### 소스에서 빌드하기
+
+에뮬레이터를 켠 뒤 빌드하고 설치합니다. 앱 열기부터는 위 5~7번과 같습니다.
+
+```bash
+git clone https://github.com/pleos-connect-maji/pleos-connect-maji.git
+cd pleos-connect-maji
+./gradlew installDebug
+```
+
 <details>
 <summary>단위 테스트 실행</summary>
 
@@ -189,23 +240,6 @@ open http://127.0.0.1:8088/
 ```
 
 </details>
-
-<br>
-
-## 📦 APK
-
-| 항목 | 내용 |
-| --- | --- |
-| 파일 | [`apk/KITS_맞이_release.apk`](apk/KITS_맞이_release.apk) |
-| 버전 | 0.1.0 · release 서명 |
-| 크기 | 약 41MB |
-| 실행 환경 | Pleos Connect Emulator 2.1 (Android API 34 · Automotive) — [테스트 환경](#-테스트-환경) 참고 |
-
-```bash
-adb install apk/KITS_맞이_release.apk
-```
-
-> 같은 기기에 디버그 버전이 이미 설치돼 있으면 서명이 달라 설치가 실패해요. `adb uninstall com.maji`로 지운 뒤 다시 설치하세요.
 
 <br>
 
